@@ -5,16 +5,30 @@ namespace App\Imports;
 use App\Models\DocumentData;
 use Maatwebsite\Excel\Concerns\ToModel;
 use Maatwebsite\Excel\Concerns\WithStartRow;
+use Maatwebsite\Excel\Concerns\WithUpserts;
 use Carbon\Carbon;
 
-class DocumentDataImport implements ToModel, WithStartRow
+class DocumentDataImport implements ToModel, WithStartRow, WithUpserts
 {
+
+    private $batchId;
+
     /**
      * @return int
      */
     public function startRow(): int
     {
         return 2;
+    }
+
+    public function __construct(string $batchId)
+    {
+        $this->batchId = $batchId;
+    }
+
+    public function uniqueBy()
+    {
+        return 'order_id';
     }
 
     public function model(array $row)
@@ -29,12 +43,11 @@ class DocumentDataImport implements ToModel, WithStartRow
             str_contains(strtolower($namaProduk ?? ''), 'kidi') ||
             str_contains(strtoupper($namaWitel ?? ''), 'JATENG') ||
             (str_contains(strtolower($layanan ?? ''), 'mahir') && !str_contains($namaProduk ?? '', '-'))
-            ) {
-                return null;
+        ) {
+            return null;
         }
 
         $parseDate = fn($date) => empty($date) ? null : Carbon::parse($date)->format('Y-m-d H:i:s');
-
         $orderId = is_string($orderIdRaw) && strtoupper(substr($orderIdRaw, 0, 2)) === 'SC'
             ? substr($orderIdRaw, 2) : $orderIdRaw;
 
@@ -44,25 +57,24 @@ class DocumentDataImport implements ToModel, WithStartRow
 
         $segmenN = $row[36] ?? null;
         $segment = (in_array($segmenN, ['RBS', 'SME'])) ? 'SME' : 'LEGS';
-
         $milestoneValue = $row[24] ?? null;
 
-        $status_wfm = 'in progress';
-        $doneMilestones = ['completed', 'complete', 'baso started', 'fulfill billing complete'];
-
-        if ($milestoneValue && in_array(strtolower(trim($milestoneValue ?? '')), $doneMilestones)) {
-            $status_wfm = 'done close bima';
+        if ($milestoneValue && stripos($milestoneValue, 'QC') !== false) {
+            $status_wfm = '';
+        } else {
+            $status_wfm = 'in progress';
+            $doneMilestones = ['completed', 'complete', 'baso started', 'fulfill billing complete'];
+            if ($milestoneValue && in_array(strtolower(trim($milestoneValue)), $doneMilestones)) {
+                $status_wfm = 'done close bima';
+            }
         }
 
-        $productValue = $row[0] ?? null;
-
-        if (is_string($productValue) && strtolower(trim($productValue)) === 'null') {
-            $productValue = null;
-        }
-
+        $productValue = (is_string($row[0] ?? null) && strtolower(trim($row[0])) === 'null') ? null : ($row[0] ?? null);
         $channel = $row[2] ?? null;
 
-        $dataToUpdate = [
+        $dataToSave = [
+            'batch_id'          => $this->batchId,
+            'order_id'          => $orderId,
             'product'           => $productValue,
             'channel'           => ($channel === 'hsi') ? 'SC-One' : $channel,
             'filter_produk'     => $row[3] ?? '',
@@ -84,21 +96,14 @@ class DocumentDataImport implements ToModel, WithStartRow
             'products_processed'=> false,
         ];
 
-        $existingData = DocumentData::find($orderId);
         $excelNetPrice = trim($row[26] ?? '') !== '' ? (float) ($row[26]) : 0;
-
-        if ($existingData && $existingData->net_price > 0) {
-            $dataToUpdate['net_price'] = $existingData->net_price;
-        } elseif ($excelNetPrice > 0) {
-            $dataToUpdate['net_price'] = $excelNetPrice;
+        if ($excelNetPrice > 0) {
+            $dataToSave['net_price'] = $excelNetPrice;
         } else {
-            $tempOrderData = new DocumentData($dataToUpdate);
-            $dataToUpdate['net_price'] = $this->calculateProductPrice($productValue ?? '', $tempOrderData);
+            $tempOrderData = new DocumentData($dataToSave);
+            $dataToSave['net_price'] = $this->calculateProductPrice($productValue ?? '', $tempOrderData);
         }
-
-        DocumentData::updateOrCreate(['order_id' => $orderId], $dataToUpdate);
-
-        return null;
+        return new DocumentData($dataToSave);
     }
 
     private function calculateProductPrice(string $productName, DocumentData $order): int

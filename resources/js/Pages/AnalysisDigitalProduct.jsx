@@ -460,14 +460,24 @@ const InProgressTable = ({ data = [] }) => {
         if (confirm(`Anda yakin ingin mengubah status Order ID: ${orderId} menjadi "Complete"?`)) {
             router.put(route('manual.update.complete', { order_id: orderId }), {}, {
                 preserveScroll: true,
+                // TAMBAHKAN BLOK INI
+                onSuccess: () => {
+                    // Memaksa Inertia untuk memuat ulang semua data dari server
+                    // dan memperbarui semua komponen di halaman.
+                    router.reload({ preserveState: false });
+                }
             });
         }
     };
 
     const handleCancelClick = (orderId) => {
-        if (confirm(`Anda yakin ingin membatalkan Order ID: ${orderId}? Statusnya akan diubah menjadi 'CANCEL'.`)) {
+        if (confirm(`Anda yakin ingin membatalkan Order ID: ${orderId}?`)) {
             router.put(route('manual.update.cancel', { order_id: orderId }), {}, {
                 preserveScroll: true,
+                // TAMBAHKAN BLOK INI
+                onSuccess: () => {
+                    router.reload({ preserveState: false });
+                }
             });
         }
     };
@@ -614,26 +624,27 @@ const HistoryTable = ({ data = [] }) => {
     );
 };
 
-const KpiTable = ({ data = [] }) => {
+const KpiTable = ({ data = [], accountOfficers = [], openModal }) => {
     return (
         <div className="overflow-x-auto text-sm">
             <table className="min-w-full divide-y divide-gray-200 border">
                 <thead className="bg-gray-50">
                     <tr>
-                        <th rowSpan="2" className="px-4 py-2 text-left text-xs font-medium text-white uppercase tracking-wider border bg-green-600">NAMA PO</th>
-                        <th rowSpan="2" className="px-4 py-2 text-left text-xs font-medium text-white uppercase tracking-wider border bg-green-600">WITEL</th>
+                        <th rowSpan="2" className="px-4 py-2 text-center text-xs font-medium text-white uppercase tracking-wider border bg-green-600">NAMA PO</th>
+                        <th rowSpan="2" className="px-4 py-2 text-center text-xs font-medium text-white uppercase tracking-wider border bg-green-600">WITEL</th>
                         <th colSpan="2" className="px-4 py-2 text-center text-xs font-medium text-white uppercase tracking-wider border bg-orange-500">PRODIGI DONE</th>
                         <th colSpan="2" className="px-4 py-2 text-center text-xs font-medium text-white uppercase tracking-wider border bg-blue-500">PRODIGI OGP</th>
-                        <th rowSpan="2" className="px-4 py-2 text-left text-xs font-medium text-white uppercase tracking-wider border bg-green-600">TOTAL</th>
-                        <th colSpan="2" className="px-4 py-2 text-center text-xs font-medium text-white uppercase tracking-wider border bg-green-600">ACH</th>
+                        <th rowSpan="2" className="px-4 py-2 text-center text-xs font-medium text-white uppercase tracking-wider border bg-green-600">TOTAL</th>
+                        <th colSpan="2" className="px-4 py-2 text-center text-xs font-medium text-white uppercase tracking-wider border bg-yellow-400">ACH</th>
+                        <th rowSpan="2" className="px-4 py-2 text-center text-xs font-medium text-white uppercase tracking-wider border bg-gray-600">AKSI</th>
                     </tr>
                     <tr>
                         <th className="px-4 py-2 text-center text-xs font-medium text-white uppercase tracking-wider border bg-orange-400">NCX</th>
                         <th className="px-4 py-2 text-center text-xs font-medium text-white uppercase tracking-wider border bg-orange-400">SCONE</th>
                         <th className="px-4 py-2 text-center text-xs font-medium text-white uppercase tracking-wider border bg-blue-400">NCX</th>
                         <th className="px-4 py-2 text-center text-xs font-medium text-white uppercase tracking-wider border bg-blue-400">SCONE</th>
-                        <th className="px-4 py-2 text-center text-xs font-medium text-white uppercase tracking-wider border bg-green-400">YTD</th>
-                        <th className="px-4 py-2 text-center text-xs font-medium text-white uppercase tracking-wider border bg-green-400">Q3</th>
+                        <th className="px-4 py-2 text-center text-xs font-medium text-white uppercase tracking-wider border bg-yellow-300">YTD</th>
+                        <th className="px-4 py-2 text-center text-xs font-medium text-white uppercase tracking-wider border bg-yellow-300">Q3</th>
                     </tr>
                 </thead>
                 <tbody className="bg-white divide-y divide-gray-200">
@@ -648,10 +659,98 @@ const KpiTable = ({ data = [] }) => {
                             <td className="px-4 py-2 whitespace-nowrap border text-center font-bold">{po.total}</td>
                             <td className="px-4 py-2 whitespace-nowrap border text-center font-bold bg-yellow-200">{po.ach_ytd}</td>
                             <td className="px-4 py-2 whitespace-nowrap border text-center font-bold bg-yellow-200">{po.ach_q3}</td>
+                            <td className="px-4 py-2 whitespace-nowrap border">
+                                <button
+                                    onClick={() => openModal(accountOfficers.find(a => a.id === po.id))}
+                                    className="text-indigo-600 hover:text-indigo-900 text-xs font-semibold"
+                                >
+                                    Edit
+                                </button>
+                            </td>
                         </tr>
                     ))}
                 </tbody>
             </table>
+        </div>
+    );
+};
+
+const AgentFormModal = ({ isOpen, onClose, agent }) => {
+    const { data, setData, post, put, processing, errors, reset } = useForm({
+        name: '',
+        display_witel: '',
+        filter_witel_lama: '',
+        special_filter_column: '',
+        special_filter_value: '',
+    });
+
+    useEffect(() => {
+        if (agent) {
+            setData({
+                name: agent.name || '',
+                display_witel: agent.display_witel || '',
+                filter_witel_lama: agent.filter_witel_lama || '',
+                special_filter_column: agent.special_filter_column || '',
+                special_filter_value: agent.special_filter_value || '',
+            });
+        } else {
+            reset();
+        }
+    }, [agent, isOpen]); // Tambahkan isOpen agar form reset saat ditutup dan dibuka lagi
+
+    const handleSubmit = (e) => {
+        e.preventDefault();
+        const onSuccess = () => {
+            onClose();
+            // Tidak perlu router.reload, karena onSuccess Inertia akan otomatis memperbarui data
+        };
+
+        if (agent) {
+            put(route('account-officers.update', agent.id), { onSuccess, preserveScroll: true });
+        } else {
+            post(route('account-officers.store'), { onSuccess, preserveScroll: true });
+        }
+    };
+
+    if (!isOpen) return null;
+
+    return (
+        <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex justify-center items-center p-4">
+            <div className="bg-white p-6 rounded-lg shadow-xl w-full max-w-md">
+                <h2 className="text-lg font-bold mb-4">{agent ? 'Edit Agen' : 'Tambah Agen Baru'}</h2>
+                <form onSubmit={handleSubmit} className="space-y-4">
+                    <div>
+                        <InputLabel htmlFor="name" value="Nama PO" />
+                        <input id="name" type="text" value={data.name} onChange={e => setData('name', e.target.value)} className="mt-1 block w-full border-gray-300 rounded-md shadow-sm" required />
+                        <InputError message={errors.name} className="mt-2" />
+                    </div>
+                    <div>
+                        <InputLabel htmlFor="display_witel" value="Display Witel" />
+                        <input id="display_witel" type="text" value={data.display_witel} onChange={e => setData('display_witel', e.target.value)} className="mt-1 block w-full border-gray-300 rounded-md shadow-sm" required />
+                        <InputError message={errors.display_witel} className="mt-2" />
+                    </div>
+                    <div>
+                        <InputLabel htmlFor="filter_witel_lama" value="Filter Witel Lama (sesuai data mentah)" />
+                        <input id="filter_witel_lama" type="text" value={data.filter_witel_lama} onChange={e => setData('filter_witel_lama', e.target.value)} className="mt-1 block w-full border-gray-300 rounded-md shadow-sm" required />
+                        <InputError message={errors.filter_witel_lama} className="mt-2" />
+                    </div>
+                    <div>
+                        <InputLabel htmlFor="special_filter_column" value="Filter Kolom Khusus (opsional)" />
+                        <input id="special_filter_column" type="text" value={data.special_filter_column} onChange={e => setData('special_filter_column', e.target.value)} className="mt-1 block w-full border-gray-300 rounded-md shadow-sm" />
+                        <InputError message={errors.special_filter_column} className="mt-2" />
+                    </div>
+                    <div>
+                        <InputLabel htmlFor="special_filter_value" value="Nilai Filter Kolom Khusus (opsional)" />
+                        <input id="special_filter_value" type="text" value={data.special_filter_value} onChange={e => setData('special_filter_value', e.target.value)} className="mt-1 block w-full border-gray-300 rounded-md shadow-sm" />
+                        <InputError message={errors.special_filter_value} className="mt-2" />
+                    </div>
+
+                    <div className="flex items-center justify-end gap-4 pt-4">
+                        <button type="button" onClick={onClose} className="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-200 rounded-md hover:bg-gray-300">Batal</button>
+                        <PrimaryButton type="submit" disabled={processing}>{processing ? 'Menyimpan...' : 'Simpan'}</PrimaryButton>
+                    </div>
+                </form>
+            </div>
         </div>
     );
 };
@@ -683,7 +782,7 @@ const generateYearOptions = () => {
 // KOMPONEN UTAMA ANALYSISDigitalProduct
 // ===================================================================
 // Ganti seluruh fungsi AnalysisDigitalProduct di file AnalysisDigitalProduct.jsx dengan ini
-export default function AnalysisDigitalProduct({ reportData = [], currentSegment = 'SME', period = '', inProgressData = [], newData = [], historyData = [], kpiData = [], currentInProgressYear, flash = {}, errors: pageErrors = {} }) {
+export default function AnalysisDigitalProduct({ reportData = [], currentSegment = 'SME', period = '', inProgressData = [], newData = [], historyData = [], accountOfficers = [], kpiData = [], currentInProgressYear, flash = {}, errors: pageErrors = {} }) {
 
     const [activeDetailView, setActiveDetailView] = useState('inprogress');
     const [witelFilter, setWitelFilter] = useState('ALL');
@@ -719,6 +818,19 @@ export default function AnalysisDigitalProduct({ reportData = [], currentSegment
                 preserveScroll: true,
             });
         }
+    };
+
+    const [isModalOpen, setIsModalOpen] = useState(false);
+    const [editingAgent, setEditingAgent] = useState(null);
+
+    const openModal = (agent = null) => {
+        setEditingAgent(agent);
+        setIsModalOpen(true);
+    };
+
+    const closeModal = () => {
+        setIsModalOpen(false);
+        setEditingAgent(null);
     };
 
     // Handler untuk mengubah segmen (LEGS/SME)
@@ -936,13 +1048,30 @@ export default function AnalysisDigitalProduct({ reportData = [], currentSegment
                                     <select value={witelFilter} onChange={e => setWitelFilter(e.target.value)} className="border border-gray-300 rounded-md text-sm p-2">
                                         {uniqueWitelList.map(witel => <option key={witel} value={witel}>{witel === 'ALL' ? 'Semua Witel' : witel}</option>)}
                                     </select>
+                                    <a
+                                        href={route('analysis.export.inprogress', { segment: currentSegment, in_progress_year: currentInProgressYear })}
+                                        className="px-4 py-2 bg-green-600 text-white text-sm font-semibold rounded-md hover:bg-green-700"
+                                    >
+                                        Export Excel
+                                    </a>
                                 </div>
+                            )}
+                            {activeDetailView === 'kpi' && (
+                                <PrimaryButton onClick={() => openModal()}>
+                                    Tambah Agen
+                                </PrimaryButton>
                             )}
                         </div>
                         {activeDetailView === 'inprogress' && <InProgressTable data={filteredInProgressData} />}
                         {activeDetailView === 'newdata' && <NewDataTable data={newData} />}
                         {activeDetailView === 'history' && <HistoryTable data={historyData.slice(0, 10)} />}
-                        {activeDetailView === 'kpi' && <KpiTable data={kpiData} />}
+                        {activeDetailView === 'kpi' &&
+                            <KpiTable
+                                data={kpiData}
+                                accountOfficers={accountOfficers}
+                                openModal={openModal}
+                            />
+                        }
                     </div>
                 </div>
 
@@ -1021,6 +1150,7 @@ export default function AnalysisDigitalProduct({ reportData = [], currentSegment
                     </div>
                 </div>
             </div>
+            <AgentFormModal isOpen={isModalOpen} onClose={closeModal} agent={editingAgent} />
         </AuthenticatedLayout>
     );
 }

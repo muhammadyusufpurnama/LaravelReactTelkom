@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Jobs\ImportAndProcessDocument;
 use App\Jobs\ProcessCompletedOrders;
 use App\Models\CompletedOrder;
+use App\Models\AccountOfficer;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Redirect;
 use Inertia\Inertia;
@@ -12,6 +13,9 @@ use App\Models\DocumentData;
 use App\Models\Target;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use App\Exports\InProgressExport;
+use Maatwebsite\Excel\Facades\Excel;
+use Illuminate\Support\Facades\Cache;
 
 class AnalysisDigitalProductController extends Controller
 {
@@ -65,13 +69,21 @@ class AnalysisDigitalProductController extends Controller
 
     public function index(Request $request)
     {
+        $lastBatchId = Cache::get('last_successful_batch_id');
+        $newData = collect();
+
+        if ($lastBatchId) {
+            $newData = DocumentData::where('batch_id', $lastBatchId)
+                ->whereColumn('created_at', '=', 'updated_at')
+                ->orderBy('created_at', 'desc')
+                ->get();
+        }
+
         $periodInput = $request->input('period', now()->format('Y-m'));
         $selectedSegment = $request->input('segment', 'SME');
         $reportPeriod = \Carbon\Carbon::parse($periodInput)->startOfMonth();
 
         $inProgressYear = $request->input('in_progress_year', now()->year);
-
-        $newData = DocumentData::orderBy('created_at', 'desc')->take(10)->get();
 
         $masterWitelList = ['BALI', 'JATIM BARAT', 'JATIM TIMUR', 'NUSA TENGGARA', 'SURAMADU'];
 
@@ -104,9 +116,18 @@ class AnalysisDigitalProductController extends Controller
                                 ->take(10)
                                 ->get();
 
-        $kpiData = collect($this->accountOfficers)->map(function ($officer) {
-            $witelFilter = $officer['filter_witel_lama'];
-            $specialFilter = $officer['special_filter'];
+        $officers = AccountOfficer::orderBy('name')->get();
+
+        $kpiData = $officers->map(function ($officer) {
+        $witelFilter = $officer->filter_witel_lama;
+
+        $specialFilter = null;
+            if ($officer->special_filter_column && $officer->special_filter_value) {
+                $specialFilter = [
+                    'column' => $officer->special_filter_column,
+                    'value' => $officer->special_filter_value,
+                ];
+            }
 
             $singleQuery = DocumentData::where('witel_lama', $witelFilter)
                 ->whereNotNull('product')
@@ -141,6 +162,7 @@ class AnalysisDigitalProductController extends Controller
             $ogp_scone  = $ogp_scone_single + $ogp_scone_bundle;
 
             return [
+                'id'         => $officer->id,
                 'nama_po'    => $officer['name'],
                 'witel'      => $officer['display_witel'],
                 'done_ncx'   => $done_ncx,
@@ -160,6 +182,7 @@ class AnalysisDigitalProductController extends Controller
             'inProgressData' => $inProgressData,
             'newData' => $newData,
             'historyData' => $historyData,
+            'accountOfficers' => $officers,
             'kpiData' => $kpiData,
             'currentInProgressYear' => $inProgressYear, ]);
     }
@@ -230,5 +253,15 @@ class AnalysisDigitalProductController extends Controller
             return Redirect::back()->with('success', "Order ID: {$order_id} berhasil dibatalkan.");
         }
         return Redirect::back()->with('error', "Order ID: {$order_id} tidak ditemukan.");
+    }
+
+    public function exportInProgress(Request $request)
+    {
+        $segment = $request->input('segment', 'SME');
+        $year = $request->input('in_progress_year', now()->year);
+        $fileName = 'in_progress_data_' . $segment . '_' . $year . '.xlsx';
+
+        // Panggil kelas Export dan trigger download
+        return Excel::download(new InProgressExport($segment, $year), $fileName);
     }
 }

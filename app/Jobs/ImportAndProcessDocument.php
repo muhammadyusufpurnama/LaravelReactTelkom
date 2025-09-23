@@ -5,13 +5,16 @@ namespace App\Jobs;
 use App\Imports\DocumentDataImport;
 use App\Models\DocumentData;
 use App\Models\OrderProduct;
+use App\Jobs\ProcessProductBundles;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Storage;
 use Maatwebsite\Excel\Facades\Excel;
 
 class ImportAndProcessDocument implements ShouldQueue
@@ -19,72 +22,33 @@ class ImportAndProcessDocument implements ShouldQueue
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
     public $timeout = 1200;
-    protected $filePath;
+    protected $path;
 
-    public function __construct(string $filePath)
+    public function __construct(string $path)
     {
-        $this->filePath = $filePath;
+        $this->path = $path;
     }
 
     public function handle(): void
     {
-        Log::info("Memulai job gabungan untuk file: {$this->filePath}");
+        $filePath = Storage::path($this->path);
+        $batchId = uniqid('import_', true);
+
+        Log::info("Memulai proses unggah untuk file: {$this->path} dengan Batch ID: {$batchId}");
 
         try {
-            Log::info("Memulai Fase 1: Impor data mentah...");
-            Excel::import(new \App\Imports\DocumentDataImport, $this->filePath);
-            Log::info("Fase 1 Selesai: Impor data mentah berhasil.");
+            Excel::import(new DocumentDataImport($batchId), $filePath);
+            Log::info("Proses unggah data mentah selesai untuk Batch ID: {$batchId}.");
+            Cache::put('last_successful_batch_id', $batchId, now()->addDays(30));
+
+            ProcessProductBundles::dispatch();
+            Log::info("Job untuk memproses produk bundling telah dijadwalkan.");
+
         } catch (\Exception $e) {
-            Log::error("GAGAL pada Fase 1 (Impor Data Mentah): " . $e->getMessage() . " di baris " . $e->getLine());
+            Log::error("GAGAL memproses file {$this->path} (Batch ID: {$batchId}): " . $e->getMessage() . " di baris " . $e->getLine());
             $this->fail($e);
-            return;
-        }
-
-        Log::info("Memulai Fase 2: Memproses Produk...");
-        try {
-            DB::transaction(function () {
-                DocumentData::where('products_processed', false)
-                    ->chunkById(100, function ($orders) {
-
-                    foreach ($orders as $order) {
-                        $productString = $order->product ?? '';
-
-                        $normalizedString = str_replace(["\r\n", "\n", "\r"], '-', $productString);
-
-                        if (str_contains($normalizedString, '-')) {
-
-                            OrderProduct::where('order_id', $order->order_id)->delete();
-
-                            $productNames = array_filter(array_map('trim', explode('-', $normalizedString)));
-
-                            foreach ($productNames as $productName) {
-                                if (
-                                    empty($productName) ||
-                                    stripos($productName, 'kidi') !== false ||
-                                    (stripos($order->layanan ?? '', 'mahir') !== false && stripos($productName, 'pijar') !== false)
-                                ) {
-                                    continue;
-                                }
-
-                                OrderProduct::create([
-                                    'order_id'     => $order->order_id,
-                                    'product_name' => $productName,
-                                    'net_price'    => $this->calculateProductPrice($productName, $order),
-                                    'channel'      => $order->channel,
-                                    'status_wfm'   => $order->status_wfm,
-                                ]);
-                            }
-                        }
-
-                        $order->products_processed = true;
-                        $order->save();
-                    }
-                });
-            });
-            Log::info("Fase 2 Selesai dengan sukses.");
-        } catch (\Exception $e) {
-            Log::error("GAGAL pada Fase 2 (Pemrosesan Produk): " . $e->getMessage() . " di baris " . $e->getLine());
-            $this->fail($e);
+        } finally {
+            Storage::delete($this->path);
         }
     }
 

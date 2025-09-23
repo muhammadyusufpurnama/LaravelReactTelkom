@@ -33,7 +33,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
 
     // Aksi Manual Update (dipindahkan ke sini agar terlindungi)
     Route::put('/manual-update/{order_id}/complete', [ManualUpdateController::class, 'complete'])->name('manual.update.complete');
-    Route::delete('/manual-update/{order_id}/cancel', [ManualUpdateController::class, 'cancel'])->name('manual.update.cancel');
+    Route::put('/manual-update/cancel/{order_id}', [AnalysisDigitalProductController::class, 'updateManualCancel'])->name('manual.update.cancel');
     Route::put('/manual-update/cancel/{order_id}', [AnalysisDigitalProductController::class, 'updateManualCancel'])->name('manual.update.cancel');
     Route::put('/manual-update/complete/{order_id}', [AnalysisDigitalProductController::class, 'updateManualComplete'])->name('manual.update.complete');
 
@@ -45,6 +45,11 @@ Route::middleware(['auth', 'verified'])->group(function () {
     });
 
     Route::post('/analysis-digital-product/sync-complete', [AnalysisDigitalProductController::class, 'syncCompletedOrders'])->name('analysisDigitalProduct.syncComplete');
+
+    Route::get('/analysis/export/inprogress', [AnalysisDigitalProductController::class, 'exportInProgress'])->name('analysis.export.inprogress');
+
+    Route::post('/account-officers', [AccountOfficerController::class, 'store'])->name('account-officers.store');
+    Route::put('/account-officers/{officer}', [AccountOfficerController::class, 'update'])->name('account-officers.update');
 });
 
 // Rute Autentikasi Bawaan Laravel
