@@ -778,11 +778,102 @@ const generateYearOptions = () => {
     return options;
 };
 
+// resources/js/Pages/AnalysisDigitalProduct.jsx
+
+// ... letakkan ini di atas komponen KpiTable
+
+// Ganti seluruh komponen QcTable Anda dengan ini
+
+const QcTable = ({ data = [] }) => {
+    const formatDate = (dateString) => {
+        if (!dateString) return '-';
+        return new Date(dateString).toLocaleString('id-ID', {
+            year: 'numeric', month: '2-digit', day: '2-digit',
+            hour: '2-digit', minute: '2-digit'
+        });
+    };
+
+    // Fungsi untuk menangani klik tombol "In Progress"
+    const handleSetInProgress = (orderId) => {
+        if (confirm(`Anda yakin ingin mengembalikan Order ID ${orderId} ke status "In Progress"?`)) {
+            router.put(route('qc.update.progress', { order_id: orderId }), {}, {
+                preserveScroll: true,
+                onSuccess: () => router.reload({ preserveState: false }),
+            });
+        }
+    };
+
+    // Fungsi untuk menangani klik tombol "Done Close Bima"
+    const handleSetDone = (orderId) => {
+        if (confirm(`Anda yakin ingin mengubah status Order ID ${orderId} menjadi "Done Close Bima"?`)) {
+            router.put(route('qc.update.done', { order_id: orderId }), {}, {
+                preserveScroll: true,
+                onSuccess: () => router.reload({ preserveState: false }),
+            });
+        }
+    };
+
+    return (
+        <div className="overflow-x-auto text-sm">
+            <p className="text-gray-500 mb-2">Menampilkan data order yang sedang dalam proses Quality Control (QC).</p>
+            <table className="w-full">
+                <thead className="bg-gray-50">
+                    <tr className="text-left font-semibold text-gray-600">
+                        <th className="p-3">No.</th>
+                        <th className="p-3">Milestone</th>
+                        <th className="p-3">Order ID</th>
+                        <th className="p-3">Product Name</th>
+                        <th className="p-3">Witel</th>
+                        <th className="p-3">Customer Name</th>
+                        <th className="p-3">Update Time</th>
+                        <th className="p-3 text-center">Aksi</th> {/* <-- Kolom Baru */}
+                    </tr>
+                </thead>
+                <tbody className="divide-y bg-white">
+                    {data.length > 0 ? data.map((item, index) => (
+                        <tr key={item.order_id} className="text-gray-700 hover:bg-gray-50">
+                            <td className="p-3">{index + 1}</td>
+                            <td className="p-3">{item.milestone}</td>
+                            <td className="p-3 font-mono">{item.order_id}</td>
+                            <td className="p-3">{item.product}</td>
+                            <td className="p-3">{item.nama_witel}</td>
+                            <td className="p-3">{item.customer_name}</td>
+                            <td className="p-3">{formatDate(item.updated_at)}</td>
+                            <td className="p-3 text-center"> {/* <-- Sel Baru */}
+                                <div className="flex justify-center items-center gap-2">
+                                    <button
+                                        onClick={() => handleSetInProgress(item.order_id)}
+                                        className="px-3 py-1 text-xs font-bold text-white bg-blue-500 rounded-md hover:bg-blue-600"
+                                    >
+                                        In Progress
+                                    </button>
+                                    <button
+                                        onClick={() => handleSetDone(item.order_id)}
+                                        className="px-3 py-1 text-xs font-bold text-white bg-green-500 rounded-md hover:bg-green-600"
+                                    >
+                                        Done Close Bima
+                                    </button>
+                                </div>
+                            </td>
+                        </tr>
+                    )) : (
+                        <tr>
+                            <td colSpan="8" className="p-4 text-center text-gray-500">
+                                Tidak ada data QC saat ini.
+                            </td>
+                        </tr>
+                    )}
+                </tbody>
+            </table>
+        </div>
+    );
+};
+
 // ===================================================================
 // KOMPONEN UTAMA ANALYSISDigitalProduct
 // ===================================================================
 // Ganti seluruh fungsi AnalysisDigitalProduct di file AnalysisDigitalProduct.jsx dengan ini
-export default function AnalysisDigitalProduct({ reportData = [], currentSegment = 'SME', period = '', inProgressData = [], newData = [], historyData = [], accountOfficers = [], kpiData = [], currentInProgressYear, flash = {}, errors: pageErrors = {} }) {
+export default function AnalysisDigitalProduct({ auth, reportData = [], currentSegment = 'SME', period = '', inProgressData = [], newData = [], newStatusData, historyData = [], accountOfficers = [], kpiData = [], qcData = [], currentInProgressYear, flash = {}, errors: pageErrors = {} }) {
 
     const [activeDetailView, setActiveDetailView] = useState('inprogress');
     const [witelFilter, setWitelFilter] = useState('ALL');
@@ -923,7 +1014,7 @@ export default function AnalysisDigitalProduct({ reportData = [], currentSegment
         </button>
     );
 
-    const NewDataTable = ({ data = [] }) => {
+    const NewStatusTable = ({ data = [] }) => {
         const formatDate = (dateString) => {
             if (!dateString) return '-';
             return new Date(dateString).toLocaleString('id-ID', {
@@ -945,38 +1036,28 @@ export default function AnalysisDigitalProduct({ reportData = [], currentSegment
 
         return (
             <div className="overflow-x-auto text-sm">
-                <p className="text-gray-500 mb-2">Menampilkan 10 data terbaru yang diunggah.</p>
+                <p className="text-gray-500 mb-2">Menampilkan order dengan perubahan status dari unggahan terakhir.</p>
                 <table className="w-full">
                     <thead className="bg-gray-50">
                         <tr className="text-left font-semibold text-gray-600">
-                            <th className="p-3">No.</th>
-                            <th className="p-3">Milestone</th>
-                            <th className="p-3">Order Status</th>
-                            <th className="p-3">Product Name</th>
                             <th className="p-3">Order ID</th>
                             <th className="p-3">Witel</th>
-                            <th className="p-3">Customer Name</th>
-                            <th className="p-3">Created Time</th>
+                            <th className="p-3">Milestone Lama</th>
+                            <th className="p-3">Milestone Baru</th>
+                            <th className="p-3">Waktu Update</th>
                         </tr>
                     </thead>
                     <tbody className="divide-y bg-white">
-                        {data.length > 0 ? data.map((item, index) => (
-                            <tr key={item.order_id} className="text-gray-700 hover:bg-gray-50">
-                                <td className="p-3">{index + 1}</td>
-                                <td className="p-3 whitespace-normal">{item.milestone}</td>
-                                <td className="p-3">{getStatusChip(item.order_status_n)}</td>
-                                <td className="p-3">{item.product_name}</td>
+                        {data.length > 0 ? data.map((item) => (
+                            <tr key={item.order_id}>
                                 <td className="p-3 font-mono">{item.order_id}</td>
                                 <td className="p-3">{item.nama_witel}</td>
-                                <td className="p-3">{item.customer_name}</td>
-                                <td className="p-3 font-semibold">{formatDate(item.created_at)}</td>
+                                <td className="p-3 text-red-600">{item.previous_milestone}</td>
+                                <td className="p-3 text-green-600">{item.milestone}</td>
+                                <td className="p-3 font-semibold">{formatDate(item.updated_at)}</td>
                             </tr>
                         )) : (
-                            <tr>
-                                <td colSpan="8" className="p-4 text-center text-gray-500">
-                                    Belum ada data baru yang diunggah.
-                                </td>
-                            </tr>
+                            <tr><td colSpan="5" className="p-4 text-center text-gray-500">Tidak ada perubahan status pada unggahan terakhir.</td></tr>
                         )}
                     </tbody>
                 </table>
@@ -985,7 +1066,7 @@ export default function AnalysisDigitalProduct({ reportData = [], currentSegment
     };
 
     return (
-        <AuthenticatedLayout header="Analysis Digital Product">
+        <AuthenticatedLayout auth={auth} header="Analysis Digital Product">
             <Head title="Analysis Digital Product" />
 
             {/* Notifikasi Flash Messages */}
@@ -1033,8 +1114,11 @@ export default function AnalysisDigitalProduct({ reportData = [], currentSegment
                                 <DetailTabButton viewName="history" currentView={activeDetailView} setView={setActiveDetailView}>
                                     Update History ({historyData.length > 10 ? '10+' : historyData.length})
                                 </DetailTabButton>
-                                <DetailTabButton viewName="newdata" currentView={activeDetailView} setView={setActiveDetailView}>
-                                    Data Baru ({newData.length})
+                                <DetailTabButton viewName="newstatus" currentView={activeDetailView} setView={setActiveDetailView}>
+                                    Data Status Baru ({newStatusData.length})
+                                </DetailTabButton>
+                                <DetailTabButton viewName="qc" currentView={activeDetailView} setView={setActiveDetailView}>
+                                    Data QC ({qcData.length})
                                 </DetailTabButton>
                                 <DetailTabButton viewName="kpi" currentView={activeDetailView} setView={setActiveDetailView}>
                                     KPI PO
@@ -1063,8 +1147,9 @@ export default function AnalysisDigitalProduct({ reportData = [], currentSegment
                             )}
                         </div>
                         {activeDetailView === 'inprogress' && <InProgressTable data={filteredInProgressData} />}
-                        {activeDetailView === 'newdata' && <NewDataTable data={newData} />}
+                        {activeDetailView === 'newstatus' && <NewStatusTable data={newStatusData} />}
                         {activeDetailView === 'history' && <HistoryTable data={historyData.slice(0, 10)} />}
+                        {activeDetailView === 'qc' && <QcTable data={qcData} />} {/* <-- TAMBAHKAN INI */}
                         {activeDetailView === 'kpi' &&
                             <KpiTable
                                 data={kpiData}

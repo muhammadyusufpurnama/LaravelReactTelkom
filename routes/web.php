@@ -1,11 +1,14 @@
 <?php
 
+use Illuminate\Support\Facades\Auth;
+use Illuminate\Http\Request;
 use App\Http\Controllers\AnalysisDigitalProductController;
 use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\DashboardDigitalProductController;
 use App\Http\Controllers\ManualUpdateController;
 use Illuminate\Foundation\Application;
 use Illuminate\Support\Facades\Route;
+use App\Http\Controllers\AccountOfficerController;
 use Inertia\Inertia;
 
 Route::get('/info', function () { phpinfo(); });
@@ -50,6 +53,13 @@ Route::middleware(['auth', 'verified'])->group(function () {
 
     Route::post('/account-officers', [AccountOfficerController::class, 'store'])->name('account-officers.store');
     Route::put('/account-officers/{officer}', [AccountOfficerController::class, 'update'])->name('account-officers.update');
+
+    Route::put('/qc-update/{order_id}/progress', [AnalysisDigitalProductController::class, 'updateQcStatusToProgress'])->name('qc.update.progress');
+    Route::put('/qc-update/{order_id}/done', [AnalysisDigitalProductController::class, 'updateQcStatusToDone'])->name('qc.update.done');
+
+    Route::get('/dashboardDigitalProduct', [DashboardDigitalProductController::class, 'index'])->name('dashboardDigitalProduct');
+
+    Route::get('/info', function () { phpinfo(); });
 });
 
 // Rute Autentikasi Bawaan Laravel

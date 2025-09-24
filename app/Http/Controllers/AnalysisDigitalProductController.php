@@ -70,12 +70,14 @@ class AnalysisDigitalProductController extends Controller
     public function index(Request $request)
     {
         $lastBatchId = Cache::get('last_successful_batch_id');
-        $newData = collect();
+        $newStatusData = collect();
 
+        $lastBatchId = Cache::get('last_successful_batch_id');
         if ($lastBatchId) {
-            $newData = DocumentData::where('batch_id', $lastBatchId)
-                ->whereColumn('created_at', '=', 'updated_at')
-                ->orderBy('created_at', 'desc')
+            // Ambil data dari batch terakhir yang milestone-nya berubah
+            $newStatusData = DocumentData::where('batch_id', $lastBatchId)
+                ->whereNotNull('previous_milestone')
+                ->orderBy('updated_at', 'desc')
                 ->get();
         }
 
@@ -115,6 +117,10 @@ class AnalysisDigitalProductController extends Controller
                                 ->orderBy('updated_at', 'desc')
                                 ->take(10)
                                 ->get();
+
+        $qcData = DocumentData::where('status_wfm', '')
+                      ->orderBy('updated_at', 'desc')
+                      ->get();
 
         $officers = AccountOfficer::orderBy('name')->get();
 
@@ -180,8 +186,9 @@ class AnalysisDigitalProductController extends Controller
             'currentSegment' => $selectedSegment,
             'period' => $periodInput,
             'inProgressData' => $inProgressData,
-            'newData' => $newData,
+            'newStatusData' => $newStatusData,
             'historyData' => $historyData,
+            'qcData' => $qcData,
             'accountOfficers' => $officers,
             'kpiData' => $kpiData,
             'currentInProgressYear' => $inProgressYear, ]);
@@ -263,5 +270,30 @@ class AnalysisDigitalProductController extends Controller
 
         // Panggil kelas Export dan trigger download
         return Excel::download(new InProgressExport($segment, $year), $fileName);
+    }
+
+    public function updateQcStatusToProgress(Request $request, $order_id)
+    {
+        $order = DocumentData::find($order_id);
+        if ($order) {
+            $order->status_wfm = 'in progress';
+            $order->milestone = 'QC Processed - Return to In Progress';
+            $order->save();
+            return Redirect::back()->with('success', "Order ID {$order_id} dikembalikan ke status 'In Progress'.");
+        }
+        return Redirect::back()->with('error', "Order ID {$order_id} tidak ditemukan.");
+    }
+
+    public function updateQcStatusToDone(Request $request, $order_id)
+    {
+        $order = DocumentData::find($order_id);
+        if ($order) {
+            $order->status_wfm = 'done close bima';
+            $order->order_status_n = 'COMPLETE'; // Sesuaikan juga status n
+            $order->milestone = 'QC Processed - Marked as Complete';
+            $order->save();
+            return Redirect::back()->with('success', "Order ID {$order_id} diubah menjadi 'Complete'.");
+        }
+        return Redirect::back()->with('error', "Order ID {$order_id} tidak ditemukan.");
     }
 }

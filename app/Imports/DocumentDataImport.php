@@ -3,27 +3,26 @@
 namespace App\Imports;
 
 use App\Models\DocumentData;
+use App\Traits\CalculatesProductPrice;
 use Maatwebsite\Excel\Concerns\ToModel;
-use Maatwebsite\Excel\Concerns\WithStartRow;
 use Maatwebsite\Excel\Concerns\WithUpserts;
+use Maatwebsite\Excel\Concerns\WithStartRow;
 use Carbon\Carbon;
 
-class DocumentDataImport implements ToModel, WithStartRow, WithUpserts
+class DocumentDataImport implements ToModel, WithUpserts, WithStartRow
 {
+    use CalculatesProductPrice;
 
     private $batchId;
-
-    /**
-     * @return int
-     */
-    public function startRow(): int
-    {
-        return 2;
-    }
 
     public function __construct(string $batchId)
     {
         $this->batchId = $batchId;
+    }
+
+    public function startRow(): int
+    {
+        return 2; // Mulai membaca dari baris ke-2
     }
 
     public function uniqueBy()
@@ -33,31 +32,32 @@ class DocumentDataImport implements ToModel, WithStartRow, WithUpserts
 
     public function model(array $row)
     {
-        $orderIdRaw = $row[9] ?? null;
-        $namaProduk = $row[0] ?? null;
-        $namaWitel  = $row[7] ?? null;
-        $layanan    = $row[23] ?? null;
-
-        if (
-            empty($orderIdRaw) ||
-            str_contains(strtolower($namaProduk ?? ''), 'kidi') ||
-            str_contains(strtoupper($namaWitel ?? ''), 'JATENG') ||
-            (str_contains(strtolower($layanan ?? ''), 'mahir') && !str_contains($namaProduk ?? '', '-'))
-        ) {
+        // Menggunakan Indeks Kolom (0 = A, 1 = B, 2 = C, dst.)
+        $orderIdRaw = $row[9] ?? null; // Kolom J
+        if (empty($orderIdRaw)) {
             return null;
         }
-
-        $parseDate = fn($date) => empty($date) ? null : Carbon::parse($date)->format('Y-m-d H:i:s');
         $orderId = is_string($orderIdRaw) && strtoupper(substr($orderIdRaw, 0, 2)) === 'SC'
             ? substr($orderIdRaw, 2) : $orderIdRaw;
-
         if (empty($orderId)) {
             return null;
         }
 
+        $parseDate = function($date) {
+            if (empty($date)) return null;
+            if (is_numeric($date)) {
+                return Carbon::createFromTimestamp(($date - 25569) * 86400)->format('Y-m-d H:i:s');
+            }
+            try { return Carbon::parse($date)->format('Y-m-d H:i:s'); } catch (\Exception $e) { return null; }
+        };
+
+        // Memetakan semua data menggunakan indeks kolom
+        $productValue = $row[0] ?? null;
+        $milestoneValue = $row[24] ?? null;
         $segmenN = $row[36] ?? null;
         $segment = (in_array($segmenN, ['RBS', 'SME'])) ? 'SME' : 'LEGS';
-        $milestoneValue = $row[24] ?? null;
+        $witel = $row[7] ?? null;
+        $channel = $row[2] ?? null;
 
         if ($milestoneValue && stripos($milestoneValue, 'QC') !== false) {
             $status_wfm = '';
@@ -69,64 +69,34 @@ class DocumentDataImport implements ToModel, WithStartRow, WithUpserts
             }
         }
 
-        $productValue = (is_string($row[0] ?? null) && strtolower(trim($row[0])) === 'null') ? null : ($row[0] ?? null);
-        $channel = $row[2] ?? null;
-
-        $dataToSave = [
-            'batch_id'          => $this->batchId,
-            'order_id'          => $orderId,
-            'product'           => $productValue,
-            'channel'           => ($channel === 'hsi') ? 'SC-One' : $channel,
-            'filter_produk'     => $row[3] ?? '',
-            'witel_lama'        => $row[11] ?? null,
-            'layanan'           => $layanan,
-            'order_date'        => $parseDate($row[4] ?? null),
-            'order_status'      => $row[5] ?? null,
-            'order_sub_type'    => $row[6] ?? null,
-            'order_status_n'    => $row[27] ?? null,
-            'nama_witel'        => $namaWitel,
-            'customer_name'     => $row[19] ?? null,
-            'milestone'         => $milestoneValue,
-            'segment'           => $segment,
-            'tahun'             => $row[39] ?? null,
-            'telda'             => $row[41] ?? null,
-            'week'              => !empty($row[42]) ? Carbon::parse($row[42])->weekOfYear : null,
-            'order_created_date'=> $parseDate($row[8] ?? null),
-            'status_wfm'        => $status_wfm,
-            'products_processed'=> false,
-        ];
-
-        $excelNetPrice = trim($row[26] ?? '') !== '' ? (float) ($row[26]) : 0;
-        if ($excelNetPrice > 0) {
-            $dataToSave['net_price'] = $excelNetPrice;
-        } else {
-            $tempOrderData = new DocumentData($dataToSave);
-            $dataToSave['net_price'] = $this->calculateProductPrice($productValue ?? '', $tempOrderData);
+        $netPrice = is_numeric($row[26] ?? null) ? (float) $row[26] : 0;
+        if ($netPrice <= 0) {
+            $netPrice = $this->calculatePrice($productValue, $segment, $witel);
         }
-        return new DocumentData($dataToSave);
-    }
 
-    private function calculateProductPrice(string $productName, DocumentData $order): int
-    {
-        // [PERBAIKAN] Menambahkan '?? ''' untuk menangani data order yang mungkin kosong
-        $witel = strtoupper(trim($order->nama_witel ?? ''));
-        $segment = strtoupper(trim($order->segment ?? ''));
-
-        switch (strtolower(trim($productName))) {
-            case 'netmonk':
-                return ($segment === 'LEGS')
-                    ? 26100
-                    : (($witel === 'BALI') ? 26100 : 21600);
-            case 'oca':
-                return ($segment === 'LEGS')
-                    ? 104000
-                    : (($witel === 'NUSA TENGGARA') ? 104000 : 103950);
-            case 'antares eazy':
-                return 35000;
-            case 'pijar sekolah':
-                return 582750;
-            default:
-                return 0;
-        }
+        return new DocumentData([
+            'batch_id'           => $this->batchId,
+            'order_id'           => $orderId,
+            'product'            => $productValue,
+            'milestone'          => $milestoneValue,
+            'segment'            => $segment,
+            'net_price'          => $netPrice,
+            'channel'            => ($channel === 'hsi') ? 'SC-One' : $channel,
+            'filter_produk'      => $row[3] ?? null,
+            'witel_lama'         => $row[11] ?? null,
+            'layanan'            => $row[23] ?? null,
+            'order_date'         => $parseDate($row[4] ?? null),
+            'order_status'       => $row[5] ?? null,
+            'order_sub_type'     => $row[6] ?? null,
+            'order_status_n'     => $row[27] ?? null,
+            'nama_witel'         => $witel,
+            'customer_name'      => $row[19] ?? null,
+            'tahun'              => $row[39] ?? null,
+            'telda'              => $row[41] ?? null,
+            'week'               => !empty($row[42]) ? Carbon::parse($row[42])->weekOfYear : null,
+            'order_created_date' => $parseDate($row[8] ?? null),
+            'status_wfm'         => $status_wfm,
+            'products_processed' => false,
+        ]);
     }
 }
