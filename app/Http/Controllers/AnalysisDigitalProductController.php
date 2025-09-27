@@ -443,10 +443,25 @@ class AnalysisDigitalProductController extends Controller
         $order = DocumentData::where('order_id', $order_id)->first();
 
         if ($order) {
+            // Simpan status lama SEBELUM diubah
+            $status_lama = $order->status_wfm;
+
+            // Lakukan update
             $order->status_wfm = 'done close bima';
             $order->order_status_n = 'COMPLETE';
-            $order->milestone = 'Completed Manually'; // <-- Penanda penting!
+            $order->milestone = 'Completed Manually';
             $order->save();
+
+            // BUAT LOG MANUAL (TAMBAHAN BARU)
+            UpdateLog::create([
+                'order_id' => $order->order_id,
+                'product_name' => $order->product,
+                'customer_name' => $order->customer_name,
+                'nama_witel' => $order->nama_witel,
+                'status_lama' => $status_lama,
+                'status_baru' => 'done close bima',
+                'sumber_update' => 'Manual Complete', // <-- Penanda penting
+            ]);
 
             return Redirect::back()->with('success', "Order ID: {$order_id} berhasil di-complete.");
         }
@@ -458,10 +473,26 @@ class AnalysisDigitalProductController extends Controller
     {
         $order = DocumentData::where('order_id', $order_id)->first();
         if ($order) {
+            // Simpan status lama SEBELUM diubah
+            $status_lama = $order->status_wfm;
+
+            // Lakukan update
             $order->status_wfm = 'done close cancel';
             $order->order_status_n = 'CANCEL';
-            $order->milestone = 'Canceled Manually'; // <-- Penanda penting!
+            $order->milestone = 'Canceled Manually';
             $order->save();
+
+            // BUAT LOG MANUAL (TAMBAHAN BARU)
+            UpdateLog::create([
+                'order_id' => $order->order_id,
+                'product_name' => $order->product,
+                'customer_name' => $order->customer_name,
+                'nama_witel' => $order->nama_witel,
+                'status_lama' => $status_lama,
+                'status_baru' => 'done close cancel',
+                'sumber_update' => 'Manual Cancel', // <-- Penanda penting
+            ]);
+
             return Redirect::back()->with('success', "Order ID: {$order_id} berhasil dibatalkan.");
         }
         return Redirect::back()->with('error', "Order ID: {$order_id} tidak ditemukan.");
