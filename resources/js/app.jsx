@@ -1,3 +1,5 @@
+// resources/js/app.jsx (Kembali seperti semula)
+
 import '../css/app.css';
 import './bootstrap';
 
@@ -16,7 +18,6 @@ createInertiaApp({
         ),
     setup({ el, App, props }) {
         const root = createRoot(el);
-
         root.render(<App {...props} />);
     },
     progress: {

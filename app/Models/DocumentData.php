@@ -17,9 +17,9 @@ class DocumentData extends Model
     public $incrementing = false;
 
     protected $fillable = [
-        'order_id', 'product', 'channel', 'filter_produk', 'witel_lama',
+        'batch_id', 'order_id', 'product', 'channel', 'filter_produk', 'witel_lama',
         'layanan', 'order_date', 'order_status', 'order_sub_type', 'order_status_n',
-        'nama_witel', 'customer_name', 'milestone', 'net_price', 'segment',
+        'nama_witel', 'customer_name', 'milestone', 'previous_milestone', 'net_price', 'segment',
         'tahun', 'telda', 'week', 'order_created_date', 'status_wfm','products_processed',
     ];
 

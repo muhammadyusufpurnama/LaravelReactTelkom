@@ -1,33 +1,41 @@
 // resources/js/Layouts/AuthenticatedLayout.jsx
 
 import React from 'react';
-import Sidebar from '@/Components/Sidebar'; // <-- Mengimpor komponen Sidebar baru kita
-import Header from '@/Components/Header';   // <-- Mengimpor komponen Header baru kita
-import { usePage } from '@inertiajs/react'; // <-- Kita masih butuh ini untuk mendapatkan data user
+import Sidebar from '@/Components/Sidebar';
+import Header from '@/Components/Header';
+import { usePage } from '@inertiajs/react';
 
-// Kita ubah sedikit props agar cocok dengan Dashboard.jsx bawaan Breeze
 export default function AuthenticatedLayout({ header, children }) {
+    const user = usePage().props.auth?.user;
 
-    // Kita ambil data user yang sedang login dari Inertia
-    const { auth } = usePage().props;
+    if (!user) {
+        return (
+            <div className="flex h-screen items-center justify-center bg-gray-100">
+                <div className="text-lg font-semibold text-gray-600">
+                    Authenticating...
+                </div>
+            </div>
+        );
+    }
 
+    // Jika user ada, kita render layout lengkapnya.
     return (
-        <div className="min-h-screen bg-gray-50">
-            {/* 1. Render Sidebar di sisi kiri dan kirimkan data user ke dalamnya */}
-            <Sidebar user={auth.user} />
+        // Pembungkus utama, kita gunakan min-h-screen untuk memastikan tinggi minimal
+        <div className="min-h-screen bg-gray-100 font-sans">
 
-            {/* 2. Buat container untuk konten utama dengan margin kiri seukuran lebar sidebar (w-64 -> ml-64) */}
-            <div className="ml-64">
+            {/* Sidebar akan berada di sisi kiri (menggunakan 'fixed' dari file Sidebar.jsx) */}
+            <Sidebar user={user} />
 
-                {/* 3. Render Header di bagian atas konten utama */}
-                {/* Kita teruskan prop 'header' dari Dashboard.jsx ke prop 'title' di komponen Header kita */}
-                <Header title={header} />
+            {/* Kontainer untuk konten utama di sebelah kanan sidebar */}
+            {/* [PERBAIKAN] Tambahkan class 'ml-64' di sini */}
+            <div className="flex flex-1 flex-col ml-64">
 
-                <main>
-                    {/* 4. Render konten halaman (children) di sini, dibungkus dengan padding */}
-                    <div className="p-6">
-                        {children}
-                    </div>
+                {/* Header berada di atas konten utama */}
+                <Header user={user} pageHeader={header} />
+
+                {/* Konten utama halaman (children) */}
+                <main className="flex-1 overflow-y-auto p-4 sm:p-6 lg:p-8">
+                    {children}
                 </main>
             </div>
         </div>
