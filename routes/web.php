@@ -4,6 +4,7 @@ use Illuminate\Foundation\Application;
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
 use App\Http\Controllers\ProfileController;
+use App\Http\Controllers\UserController;
 use App\Http\Controllers\DashboardDigitalProductController;
 use App\Http\Controllers\AnalysisDigitalProductController;
 use App\Http\Controllers\AccountOfficerController;
@@ -27,15 +28,16 @@ Route::get('/', function () {
 Route::middleware(['auth', 'verified'])->group(function () {
 
     // --- DASHBOARD ---
-    Route::get('/dashboard', [DashboardDigitalProductController::class, 'index'])->name('dashboard'); // Ubah ke /dashboard untuk standar
+    Route::get('/dashboard', [DashboardDigitalProductController::class, 'index'])->name('dashboard');
     Route::get('/dashboardDigitalProduct', [DashboardDigitalProductController::class, 'index'])->name('dashboardDigitalProduct');
 
 
     // --- ANALYSIS DIGITAL PRODUCT ---
     Route::prefix('analysisDigitalProduct')->name('analysisDigitalProduct.')->controller(AnalysisDigitalProductController::class)->group(function () {
-        Route::get('/', 'index')->name('index'); // nama rute: analysisDigitalProduct.index
+        Route::get('/', 'index')->name('index');
         Route::post('/upload', 'upload')->name('upload');
-        Route::post('/targets', 'updateTargets')->name('targets');Route::post('/upload-complete', 'uploadComplete')->name('uploadComplete');
+        Route::post('/targets', 'updateTargets')->name('targets');
+        Route::post('/upload-complete', 'uploadComplete')->name('uploadComplete');
         Route::post('/sync-complete', 'syncCompletedOrders')->name('syncComplete');
         Route::post('/upload-cancel', 'uploadCancel')->name('uploadCancel');
         Route::post('/sync-cancel', 'syncCanceledOrders')->name('syncCancel');
@@ -52,6 +54,9 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::put('/qc-update/{order_id}/progress', [AnalysisDigitalProductController::class, 'updateQcStatusToProgress'])->name('qc.update.progress');
     Route::put('/qc-update/{order_id}/done', [AnalysisDigitalProductController::class, 'updateQcStatusToDone'])->name('qc.update.done');
 
+    // <-- TAMBAHKAN RUTE BARU DI SINI
+    Route::put('/qc-update/{order_id}/cancel', [AnalysisDigitalProductController::class, 'updateQcStatusToCancel'])->name('qc.update.cancel');
+
     // --- IMPORT PROGRESS BAR ---
     Route::get('/import-progress/{batchId}', [AnalysisDigitalProductController::class, 'getImportProgress'])->name('import.progress');
 
@@ -67,3 +72,4 @@ Route::middleware(['auth', 'verified'])->group(function () {
 
 // Rute Autentikasi Bawaan Laravel
 require __DIR__.'/auth.php';
+

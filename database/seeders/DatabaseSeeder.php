@@ -23,6 +23,7 @@ class DatabaseSeeder extends Seeder
         ]);
 
         $this->call([
+            SuperAdminSeeder::class,
             AccountOfficerSeeder::class,
             // Jika punya seeder lain, tambahkan di sini:
             // AnotherTableSeeder::class,

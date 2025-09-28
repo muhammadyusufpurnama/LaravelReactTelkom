@@ -642,6 +642,15 @@ const QcTable = ({ data = [] }) => {
             });
         }
     };
+    const handleSetCancel = (orderId) => {
+        if (confirm(`Anda yakin ingin mengubah status Order ID ${orderId} menjadi "Done Close Cancel"?`)) {
+            // Memanggil rute baru 'qc.update.cancel'
+            router.put(route('qc.update.cancel', { order_id: orderId }), {}, {
+                preserveScroll: true,
+                onSuccess: () => router.reload({ preserveState: false }),
+            });
+        }
+    };
     return (
         <div className="overflow-x-auto text-sm">
             <p className="text-gray-500 mb-2">Menampilkan data order yang sedang dalam proses Quality Control (QC).</p>
@@ -659,6 +668,7 @@ const QcTable = ({ data = [] }) => {
                                 <div className="flex justify-center items-center gap-2">
                                     <button onClick={() => handleSetInProgress(item.order_id)} className="px-3 py-1 text-xs font-bold text-white bg-blue-500 rounded-md hover:bg-blue-600">In Progress</button>
                                     <button onClick={() => handleSetDone(item.order_id)} className="px-3 py-1 text-xs font-bold text-white bg-green-500 rounded-md hover:bg-green-600">Done Close Bima</button>
+                                    <button onClick={() => handleSetCancel(item.order_id)} className="px-3 py-1 text-xs font-bold text-white bg-red-500 rounded-md hover:bg-red-600">Cancel</button>
                                 </div>
                             </td>
                         </tr>
@@ -1225,5 +1235,3 @@ export default function AnalysisDigitalProduct({ auth, reportData = [], currentS
         </AuthenticatedLayout>
     );
 }
-
-//hahaha
