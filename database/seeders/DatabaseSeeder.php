@@ -5,6 +5,7 @@ namespace Database\Seeders;
 use App\Models\User;
 // use Illuminate\Database\Console\Seeds\WithoutModelEvents;
 use Illuminate\Database\Seeder;
+use Illuminate\Support\Facades\Hash;
 
 class DatabaseSeeder extends Seeder
 {
@@ -20,6 +21,14 @@ class DatabaseSeeder extends Seeder
             'email' => 'test@example.com',
             'email_verified_at' => now(),
             'password' => bcrypt('password'), // password
+        ]);
+
+        User::create([
+            'name' => 'Admin',
+            'email' => 'admin@telkom.co.id',
+            'password' => Hash::make('password123'), // Ganti dengan password yang aman
+            'role' => 'admin',
+            'email_verified_at' => now(),
         ]);
 
         $this->call([

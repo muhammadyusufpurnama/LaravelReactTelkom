@@ -2,72 +2,100 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\User; // <-- 1. Import model User
+use App\Models\User;
 use Illuminate\Http\Request;
-use Inertia\Inertia; // <-- 2. Import Inertia
+use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Redirect;
+use Illuminate\Validation\Rule;
+use Illuminate\Validation\Rules;
+use Inertia\Inertia;
+use Inertia\Response;
+use Illuminate\Http\RedirectResponse;
 
 class UserController extends Controller
 {
-    /**
-     * Display a listing of the resource.
-     */
-    public function index()
+    public function index(): Response
     {
-        // 3. Ambil data pengguna dari database (dengan paginasi)
-        $users = User::paginate(10);
-
-        // 4. Kirim data ke komponen React bernama 'Users/Index'
         return Inertia::render('Users/Index', [
-            'users' => $users,
+            // Mengambil semua user kecuali superadmin yang sedang login
+            'users' => User::where('id', '!=', auth()->id())->paginate(10),
         ]);
     }
 
-
-    /**
-     * Show the form for creating a new resource.
-     */
-    public function create()
+    public function create(): Response
     {
-        //
+        return Inertia::render('Users/Create');
     }
 
-    /**
-     * Store a newly created resource in storage.
-     */
-    public function store(Request $request)
+    public function store(Request $request): RedirectResponse
     {
-        //
-    }
+        $request->validate([
+            'name' => 'required|string|max:255',
+            'email' => 'required|string|email|max:255|unique:'.User::class,
+            'password' => ['required', 'confirmed', Rules\Password::defaults()],
+            'role' => ['required', Rule::in(['admin', 'user'])],
+        ]);
 
-    /**
-     * Display the specified resource.
-     */
-    public function show(string $id)
-    {
-        //
+        User::create([
+            'name' => $request->name,
+            'email' => $request->email,
+            'password' => Hash::make($request->password),
+            'role' => $request->role,
+        ]);
+
+        return Redirect::route('users.index')->with('success', 'User created successfully.');
     }
 
     /**
      * Show the form for editing the specified resource.
      */
-    public function edit(string $id)
+    public function edit(User $user): Response
     {
-        //
+        // Mengirim data user yang akan di-edit ke halaman form
+        return Inertia::render('Users/Edit', [
+            'user' => $user,
+        ]);
     }
 
     /**
      * Update the specified resource in storage.
      */
-    public function update(Request $request, string $id)
+    public function update(Request $request, User $user): RedirectResponse
     {
-        //
+        $request->validate([
+            'name' => 'required|string|max:255',
+            'email' => ['required', 'string', 'email', 'max:255', Rule::unique(User::class)->ignore($user->id)],
+            'role' => ['required', Rule::in(['admin', 'user'])],
+            'password' => ['nullable', 'confirmed', Rules\Password::defaults()],
+        ]);
+
+        // Update data user
+        $user->name = $request->name;
+        $user->email = $request->email;
+        $user->role = $request->role;
+
+        // Hanya update password jika diisi
+        if ($request->filled('password')) {
+            $user->password = Hash::make($request->password);
+        }
+
+        $user->save();
+
+        return Redirect::route('users.index')->with('success', 'User updated successfully.');
     }
 
     /**
      * Remove the specified resource from storage.
      */
-    public function destroy(string $id)
+    public function destroy(User $user): RedirectResponse
     {
-        //
+        // Tambahan keamanan: superadmin tidak bisa menghapus akunnya sendiri
+        if ($user->role === 'superadmin' || $user->id === auth()->id()) {
+            return Redirect::route('users.index')->with('error', 'Cannot delete this user.');
+        }
+
+        $user->delete();
+
+        return Redirect::route('users.index')->with('success', 'User deleted successfully.');
     }
 }
