@@ -6,16 +6,13 @@ use App\Exports\InProgressExport;
 use App\Jobs\ImportAndProcessDocument;
 use App\Jobs\ProcessCanceledOrders;
 use App\Jobs\ProcessCompletedOrders;
-use App\Jobs\ProcessStatusFile;
 use App\Models\AccountOfficer;
 use App\Models\CanceledOrder;
 use App\Models\CompletedOrder;
 use App\Models\DocumentData;
-use App\Models\TableConfiguration;
 use App\Models\Target;
 use App\Models\UpdateLog;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Bus;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
@@ -25,6 +22,8 @@ use Maatwebsite\Excel\Facades\Excel;
 
 class AnalysisDigitalProductController extends Controller
 {
+    // Method untuk uploadComplete, syncCompletedOrders, dll. tetap sama...
+    // ... (Tidak perlu mengubah method-method ini)
     public function uploadComplete(Request $request)
     {
         $request->validate(['complete_document' => 'required|file|mimes:xlsx,xls,csv']);
@@ -43,27 +42,43 @@ class AnalysisDigitalProductController extends Controller
 
     public function syncCompletedOrders()
     {
-        $orderIdsToUpdate = CompletedOrder::pluck('order_id');
+        // 1. Ambil semua order_id dari tabel sementara, bersihkan, dan pastikan unik.
+        $orderIdsToUpdate = CompletedOrder::pluck('order_id')
+            ->map('trim')       // Hapus spasi di awal/akhir
+            ->filter()         // Hapus entri yang kosong
+            ->map(fn($id) => (string) $id) // Konversi semua ID ke string untuk konsistensi
+            ->unique();       // Ambil ID yang unik saja
 
         if ($orderIdsToUpdate->isEmpty()) {
             return Redirect::back()->with('error', 'Tidak ada data order complete yang perlu disinkronkan.');
         }
 
-        $ordersToLog = DocumentData::whereIn('order_id', $orderIdsToUpdate)
-            ->where('status_wfm', 'in progress')
-            ->get(['order_id', 'product as product_name', 'customer_name', 'nama_witel', 'status_wfm']);
+        // 2. Cari order di tabel utama (DocumentData) yang statusnya 'in progress'
+        //    DAN order_id-nya ada di dalam daftar yang kita dapat dari file Excel.
+        $ordersToUpdateAndLog = DocumentData::where('status_wfm', 'in progress')
+            ->whereIn('order_id', $orderIdsToUpdate)
+            ->get(); // Ambil data lengkapnya untuk proses logging
 
-        $updatedCount = DocumentData::whereIn('order_id', $ordersToLog->pluck('order_id'))
+        if ($ordersToUpdateAndLog->isEmpty()) {
+            CompletedOrder::truncate(); // Tetap bersihkan tabel sementara
+            return Redirect::back()->with('info', 'Tidak ada order "In Progress" yang cocok untuk di-complete dari daftar yang diunggah.');
+        }
+
+        // 3. Lakukan update HANYA pada order_id yang sudah kita filter di langkah #2.
+        $orderIdsToActuallyUpdate = $ordersToUpdateAndLog->pluck('order_id');
+
+        $updatedCount = DocumentData::whereIn('order_id', $orderIdsToActuallyUpdate)
             ->update([
                 'status_wfm' => 'done close bima',
                 'milestone' => 'Completed via Sync Process',
                 'order_status_n' => 'COMPLETE'
             ]);
 
-        $logs = $ordersToLog->map(function ($order) {
+        // 4. Buat log HANYA untuk data yang berhasil diupdate.
+        $logs = $ordersToUpdateAndLog->map(function ($order) {
             return [
                 'order_id' => $order->order_id,
-                'product_name' => $order->product_name,
+                'product_name' => $order->product_name ?? $order->product,
                 'customer_name' => $order->customer_name,
                 'nama_witel' => $order->nama_witel,
                 'status_lama' => $order->status_wfm,
@@ -78,116 +93,159 @@ class AnalysisDigitalProductController extends Controller
             UpdateLog::insert($logs);
         }
 
+        // 5. Kosongkan tabel sementara setelah proses selesai.
         CompletedOrder::truncate();
 
         return Redirect::back()->with('success', "Sinkronisasi selesai. Berhasil mengupdate {$updatedCount} order.");
     }
 
+    public function clearHistory()
+    {
+        // Perintah ini akan menghapus semua record dari tabel update_logs
+        UpdateLog::truncate();
+
+        // Redirect kembali ke halaman sebelumnya dengan pesan sukses
+        return Redirect::back()->with('success', 'Seluruh data histori berhasil dihapus.');
+    }
+
+    // ===================================================================
+    //  METHOD INDEX UTAMA (YANG DIPERBAIKI)
+    // ===================================================================
     public function index(Request $request)
     {
-        // ===================================================================
         // LANGKAH 1: PERSIAPAN FILTER
-        // ===================================================================
         $periodInput = $request->input('period', now()->format('Y-m'));
         $selectedSegment = $request->input('segment', 'SME');
         $reportPeriod = \Carbon\Carbon::parse($periodInput)->startOfMonth();
         $inProgressYear = $request->input('in_progress_year', now()->year);
+        $searchQuery = $request->input('search', '');
+        $paginationCount = 15;
+
+        // ===================================================================
+        // LANGKAH 2: DATA REPORT UTAMA (TIDAK BERUBAH)
+        // ===================================================================
         $masterWitelList = ['BALI', 'JATIM BARAT', 'JATIM TIMUR', 'NUSA TENGGARA', 'SURAMADU'];
         $productMap = [
             'netmonk' => 'n', 'oca' => 'o',
             'antares' => 'ae', 'antares eazy' => 'ae',
             'pijar' => 'ps'
         ];
-
-        // ===================================================================
-        // LANGKAH 2: INISIALISASI DATA REPORT
-        // ===================================================================
+        // ... (Logika untuk mengisi $reportData tetap sama)
         $reportDataMap = collect($masterWitelList)->mapWithKeys(function ($witel) use ($productMap) {
-            $data = ['nama_witel' => $witel];
-            $initials = array_unique(array_values($productMap));
-            foreach ($initials as $initial) {
-                $data["in_progress_{$initial}"] = 0;
-                $data["prov_comp_{$initial}_realisasi"] = 0;
-                $data["prov_comp_{$initial}_target"] = 0;
-                $data["revenue_{$initial}_ach"] = 0;
-                $data["revenue_{$initial}_target"] = 0;
-            }
-            return [$witel => $data];
-        });
+             $data = ['nama_witel' => $witel];
+             $initials = array_unique(array_values($productMap));
+             foreach ($initials as $initial) {
+                 $data["in_progress_{$initial}"] = 0;
+                 $data["prov_comp_{$initial}_realisasi"] = 0;
+                 $data["prov_comp_{$initial}_target"] = 0;
+                 $data["revenue_{$initial}_ach"] = 0;
+                 $data["revenue_{$initial}_target"] = 0;
+             }
+             return [$witel => $data];
+         });
+
+         $realizationDocuments = DocumentData::whereIn('nama_witel', $masterWitelList)
+             ->where('segment', $selectedSegment)->where('status_wfm', 'done close bima')
+             ->whereYear('order_created_date', $reportPeriod->year)->whereMonth('order_date', $reportPeriod->month)
+             ->get();
+
+         $inProgressDocuments = DocumentData::whereIn('nama_witel', $masterWitelList)
+             ->where('segment', $selectedSegment)->where('status_wfm', 'in progress')
+             ->whereYear('order_created_date', $reportPeriod->year)->whereMonth('order_created_date', $reportPeriod->month)
+             ->get();
+
+         foreach ($inProgressDocuments as $doc) {
+             $witel = $doc->nama_witel;
+             $pName = strtolower(trim($doc->product));
+             if (isset($productMap[$pName]) && $reportDataMap->has($witel)) {
+                 $currentData = $reportDataMap->get($witel);
+                 $initial = $productMap[$pName];
+                 $currentData["in_progress_{$initial}"]++;
+                 $reportDataMap->put($witel, $currentData);
+             }
+         }
+
+         foreach ($realizationDocuments as $doc) {
+             $witel = $doc->nama_witel;
+             $pName = strtolower(trim($doc->product));
+             if (isset($productMap[$pName]) && $reportDataMap->has($witel)) {
+                 $currentData = $reportDataMap->get($witel);
+                 $initial = $productMap[$pName];
+                 $currentData["prov_comp_{$initial}_realisasi"]++;
+                 $currentData["revenue_{$initial}_ach"] += $doc->net_price;
+                 $reportDataMap->put($witel, $currentData);
+             }
+         }
+
+         $targets = Target::where('segment', $selectedSegment)->where('period', $reportPeriod->format('Y-m-d'))->get();
+         foreach ($targets as $target) {
+             $witel = $target->nama_witel;
+             $pName = strtolower(trim($target->product_name));
+             if (isset($reportDataMap[$witel]) && isset($productMap[$pName])) {
+                 $currentData = $reportDataMap->get($witel);
+                 $initial = $productMap[$pName];
+                 $metricKey = $target->metric_type;
+                 $currentData["{$metricKey}_{$initial}_target"] = $target->target_value;
+                 $reportDataMap->put($witel, $currentData);
+             }
+         }
+
+         foreach ($reportDataMap as $witel => $data) {
+             $currentData = $reportDataMap->get($witel);
+             foreach (array_unique(array_values($productMap)) as $initial) {
+                 $currentData["revenue_{$initial}_ach"] /= 1000000;
+             }
+             $reportDataMap->put($witel, $currentData);
+         }
+
+         $reportData = $reportDataMap->values()->map(fn($item) => (object) $item);
 
         // ===================================================================
-        // LANGKAH 3: PENGAMBILAN & PEMROSESAN DATA REPORT UTAMA
+        // LANGKAH 3: Kueri untuk TABEL-TABEL DI BAWAH (PAGINASI DIPERBAIKI)
         // ===================================================================
-        $realizationDocuments = DocumentData::whereIn('nama_witel', $masterWitelList)
-            ->where('segment', $selectedSegment)->where('status_wfm', 'done close bima')
-            ->whereYear('order_created_date', $reportPeriod->year)->whereMonth('order_date', $reportPeriod->month)
-            ->get();
+        $inProgressQuery = DocumentData::query()
+            ->where('status_wfm', 'in progress')
+            ->where('segment', $selectedSegment)
+            ->whereYear('order_created_date', $inProgressYear);
 
-        $inProgressDocuments = DocumentData::whereIn('nama_witel', $masterWitelList)
-            ->where('segment', $selectedSegment)->where('status_wfm', 'in progress')
-            ->whereYear('order_created_date', $reportPeriod->year)->whereMonth('order_created_date', $reportPeriod->month)
-            ->get();
+        $completeQuery = DocumentData::query()
+            ->where('status_wfm', 'done close bima')
+            ->where('segment', $selectedSegment);
 
-        foreach ($inProgressDocuments as $doc) {
-            $witel = $doc->nama_witel;
-            $pName = strtolower(trim($doc->product));
-            if (isset($productMap[$pName]) && $reportDataMap->has($witel)) {
-                $currentData = $reportDataMap->get($witel);
-                $initial = $productMap[$pName];
-                $currentData["in_progress_{$initial}"]++;
-                $reportDataMap->put($witel, $currentData);
-            }
+        $qcQuery = DocumentData::query()
+            ->where('status_wfm', '');
+
+        // Terapkan filter pencarian HANYA ke kueri yang relevan
+        if ($searchQuery) {
+            $inProgressQuery->where('order_id', 'like', '%' . $searchQuery . '%');
+            $completeQuery->where('order_id', 'like', '%' . $searchQuery . '%');
+            $qcQuery->where('order_id', 'like', '%' . $searchQuery . '%');
         }
 
-        foreach ($realizationDocuments as $doc) {
-            $witel = $doc->nama_witel;
-            $pName = strtolower(trim($doc->product));
-            if (isset($productMap[$pName]) && $reportDataMap->has($witel)) {
-                $currentData = $reportDataMap->get($witel);
-                $initial = $productMap[$pName];
-                $currentData["prov_comp_{$initial}_realisasi"]++;
-                $currentData["revenue_{$initial}_ach"] += $doc->net_price;
-                $reportDataMap->put($witel, $currentData);
-            }
-        }
+        // EKSEKUSI KUERI DENGAN NAMA PAGINASI UNIK UNTUK MENGHINDARI KONFLIK
+        $inProgressData = $inProgressQuery->orderBy('order_created_date', 'desc')
+            ->paginate($paginationCount, ['*'], 'in_progress_page') // <-- NAMA UNIK
+            ->withQueryString();
 
-        $targets = Target::where('segment', $selectedSegment)->where('period', $reportPeriod->format('Y-m-d'))->get();
-        foreach ($targets as $target) {
-            $witel = $target->nama_witel;
-            $pName = strtolower(trim($target->product_name));
-            if (isset($reportDataMap[$witel]) && isset($productMap[$pName])) {
-                $currentData = $reportDataMap->get($witel);
-                $initial = $productMap[$pName];
-                $metricKey = $target->metric_type;
-                $currentData["{$metricKey}_{$initial}_target"] = $target->target_value;
-                $reportDataMap->put($witel, $currentData);
-            }
-        }
+        $completeData = $completeQuery->orderBy('updated_at', 'desc')
+            ->paginate($paginationCount, ['*'], 'complete_page') // <-- NAMA UNIK
+            ->withQueryString();
 
-        foreach ($reportDataMap as $witel => $data) {
-            $currentData = $reportDataMap->get($witel);
-            foreach (array_unique(array_values($productMap)) as $initial) {
-                $currentData["revenue_{$initial}_ach"] /= 1000000;
-            }
-            $reportDataMap->put($witel, $currentData);
-        }
+        $qcData = $qcQuery->orderBy('updated_at', 'desc')
+            ->paginate($paginationCount, ['*'], 'qc_page') // <-- NAMA UNIK
+            ->withQueryString();
 
-        $reportData = $reportDataMap->values()->map(fn($item) => (object) $item);
+        // Kueri untuk History tidak terpengaruh filter search, dan punya nama paginasi sendiri
+        $historyData = UpdateLog::latest()
+            ->paginate(10, ['*'], 'history_page') // <-- NAMA UNIK
+            ->withQueryString();
 
         // ===================================================================
-        // LANGKAH 4: AMBIL DATA PENDUKUNG LAINNYA
+        // LANGKAH 4: KALKULASI KPI (TIDAK BERUBAH)
         // ===================================================================
-        $inProgressData = DocumentData::where('status_wfm', 'in progress')->where('segment', $selectedSegment)->whereYear('order_created_date', $inProgressYear)->orderBy('order_created_date', 'desc')->get();
-        $historyData = UpdateLog::latest()->paginate(10);
-        $qcData = DocumentData::where('status_wfm', '')->orderBy('updated_at', 'desc')->get();
-        $newStatusData = DocumentData::where('batch_id', Cache::get('last_successful_batch_id'))->whereNotNull('previous_milestone')->orderBy('updated_at', 'desc')->get();
-
         $officers = AccountOfficer::orderBy('name')->get();
-
-        // ===================================================================
-        // KALKULASI KPI
-        // ===================================================================
         $kpiData = $officers->map(function ($officer) {
+            // ... (Logika KPI Anda tetap sama, tidak perlu diubah) ...
             $witelFilter = $officer->filter_witel_lama;
             $specialFilter = null;
             if ($officer->special_filter_column && $officer->special_filter_value) {
@@ -268,23 +326,26 @@ class AnalysisDigitalProductController extends Controller
         });
 
         // ===================================================================
-        // LANGKAH 5: RENDER
+        // LANGKAH 5: RENDER DENGAN SEMUA DATA
         // ===================================================================
         return Inertia::render('AnalysisDigitalProduct', [
             'reportData' => $reportData,
             'currentSegment' => $selectedSegment,
             'period' => $periodInput,
             'inProgressData' => $inProgressData,
-            'newStatusData' => $newStatusData,
+            'completeData' => $completeData, // Tambahkan completeData
             'historyData' => $historyData,
             'qcData' => $qcData,
             'accountOfficers' => $officers,
             'kpiData' => $kpiData,
             'currentInProgressYear' => $inProgressYear,
+            'filters' => $request->only(['search', 'period', 'segment', 'in_progress_year']),
         ]);
     }
 
-    public function saveTableConfig(Request $request)
+    // ... (method-method lain seperti updateTargets, getImportProgress, upload, dll. tetap sama)
+    // ... (Tidak perlu mengubah method-method ini)
+     public function saveTableConfig(Request $request)
     {
         $validated = $request->validate([
             'configuration' => 'required|array',
@@ -345,40 +406,140 @@ class AnalysisDigitalProductController extends Controller
         $path = $request->file('document')->store('excel-imports', 'local');
 
         $batch = Bus::batch([
-            new ImportAndProcessDocument($path),
+            // Pastikan namespace ke Job Anda sudah benar
+            new \App\Jobs\ImportAndProcessDocument($path),
         ])->name('Import Data Mentah')->dispatch();
 
-        return Redirect::back()->with([
-            'success' => 'Dokumen berhasil diterima.',
-            'batchId' => $batch->id,
-            'jobType' => 'mentah'
+        // Baris ini adalah KUNCI-nya. Ia harus mengarah ke 'index', BUKAN ke URL lain.
+        return Inertia::location(route('analysisDigitalProduct.index', [
+            'batch_id' => $batch->id,
+            'job_type' => 'mentah',
+            // Kita juga tambahkan filter yang sedang aktif agar tidak hilang saat redirect
+            'segment' => $request->input('segment', 'SME'),
+            'period' => $request->input('period', now()->format('Y-m')),
+            'in_progress_year' => $request->input('in_progress_year', now()->year),
+        ]));
+    }
+
+    private function updateOrderStatus($orderId, $newStatusWfm, $newOrderStatusN, $milestone, $logSource)
+    {
+        $order = DocumentData::where('order_id', $orderId)->first();
+
+        if (!$order) {
+            return Redirect::back()->with('error', "Order ID: {$orderId} tidak ditemukan.");
+        }
+
+        $oldStatus = $order->status_wfm;
+
+        if ($oldStatus === $newStatusWfm) {
+             return Redirect::back()->with('info', "Order ID: {$orderId} sudah dalam status yang dituju.");
+        }
+
+        UpdateLog::create([
+            'order_id' => $order->order_id,
+            'product_name' => $order->product_name ?? $order->product,
+            'customer_name' => $order->customer_name,
+            'nama_witel' => $order->nama_witel,
+            'status_lama' => $oldStatus,
+            'status_baru' => $newStatusWfm,
+            'sumber_update' => $logSource,
         ]);
+
+        $order->status_wfm = $newStatusWfm;
+        $order->order_status_n = $newOrderStatusN;
+        $order->milestone = $milestone;
+        $order->save();
+
+        return Redirect::back()->with('success', "Order ID: {$orderId} berhasil diupdate ke status '{$newStatusWfm}'.");
     }
 
     public function updateManualComplete(Request $request, $order_id)
     {
-        $order = DocumentData::where('order_id', $order_id)->first();
-        if ($order) {
-            $order->status_wfm = 'done close bima';
-            $order->order_status_n = 'COMPLETE';
-            $order->milestone = 'Completed Manually';
-            $order->save();
-            return Redirect::back()->with('success', "Order ID: {$order_id} berhasil di-complete.");
-        }
-        return Redirect::back()->with('error', "Order ID: {$order_id} tidak ditemukan.");
+        return $this->updateOrderStatus(
+            $order_id,
+            'done close bima',
+            'COMPLETE',
+            'Completed Manually',
+            'Manual Action'
+        );
     }
 
     public function updateManualCancel(Request $request, $order_id)
     {
-        $order = DocumentData::where('order_id', $order_id)->first();
+        return $this->updateOrderStatus(
+            $order_id,
+            'done close cancel',
+            'CANCEL',
+            'Canceled Manually',
+            'Manual Action'
+        );
+    }
+
+    public function updateCompleteToProgress(Request $request, $order_id)
+    {
+        return $this->updateOrderStatus(
+            $order_id,
+            'in progress',
+            'IN PROGRESS',
+            'Reverted to In Progress from Complete',
+            'Manual Action from Complete Tab'
+        );
+    }
+
+    public function updateCompleteToCancel(Request $request, $order_id)
+    {
+        return $this->updateOrderStatus(
+            $order_id,
+            'done close cancel',
+            'CANCEL',
+            'Changed to Cancel from Complete',
+            'Manual Action from Complete Tab'
+        );
+    }
+
+    public function updateQcStatusToProgress(Request $request, $order_id)
+    {
+        $order = DocumentData::find($order_id);
         if ($order) {
-            $order->status_wfm = 'done close cancel';
-            $order->order_status_n = 'CANCEL';
-            $order->milestone = 'Canceled Manually';
-            $order->save();
-            return Redirect::back()->with('success', "Order ID: {$order_id} berhasil dibatalkan.");
+            return $this->updateOrderStatus(
+                $order->order_id,
+                'in progress',
+                'IN PROGRESS',
+                'QC Processed - Return to In Progress',
+                'Manual Action from QC Tab'
+            );
         }
-        return Redirect::back()->with('error', "Order ID: {$order_id} tidak ditemukan.");
+        return Redirect::back()->with('error', "Order dengan ID: {$order_id} tidak ditemukan.");
+    }
+
+    public function updateQcStatusToDone(Request $request, $order_id)
+    {
+        $order = DocumentData::find($order_id);
+        if ($order) {
+            return $this->updateOrderStatus(
+                $order->order_id,
+                'done close bima',
+                'COMPLETE',
+                'QC Processed - Marked as Complete',
+                'Manual Action from QC Tab'
+            );
+        }
+        return Redirect::back()->with('error', "Order dengan ID: {$order_id} tidak ditemukan.");
+    }
+
+    public function updateQcStatusToCancel(Request $request, $order_id)
+    {
+        $order = DocumentData::find($order_id);
+        if ($order) {
+            return $this->updateOrderStatus(
+                $order->order_id,
+                'done close cancel',
+                'CANCEL',
+                'QC Processed - Marked as Cancel',
+                'Manual Action from QC Tab'
+            );
+        }
+        return Redirect::back()->with('error', "Order dengan ID: {$order_id} tidak ditemukan.");
     }
 
     public function exportInProgress(Request $request)
@@ -387,44 +548,6 @@ class AnalysisDigitalProductController extends Controller
         $year = $request->input('in_progress_year', now()->year);
         $fileName = 'in_progress_data_' . $segment . '_' . $year . '.xlsx';
         return Excel::download(new InProgressExport($segment, $year), $fileName);
-    }
-
-    public function updateQcStatusToProgress(Request $request, $order_id)
-    {
-        $order = DocumentData::find($order_id);
-        if ($order) {
-            $order->status_wfm = 'in progress';
-            $order->milestone = 'QC Processed - Return to In Progress';
-            $order->save();
-            return Redirect::back()->with('success', "Order ID {$order_id} dikembalikan ke status 'In Progress'.");
-        }
-        return Redirect::back()->with('error', "Order ID {$order_id} tidak ditemukan.");
-    }
-
-    public function updateQcStatusToDone(Request $request, $order_id)
-    {
-        $order = DocumentData::find($order_id);
-        if ($order) {
-            $order->status_wfm = 'done close bima';
-            $order->order_status_n = 'COMPLETE';
-            $order->milestone = 'QC Processed - Marked as Complete';
-            $order->save();
-            return Redirect::back()->with('success', "Order ID {$order_id} diubah menjadi 'Complete'.");
-        }
-        return Redirect::back()->with('error', "Order ID {$order_id} tidak ditemukan.");
-    }
-
-    public function updateQcStatusToCancel(Request $request, $order_id)
-    {
-        $order = DocumentData::where('order_id', $order_id)->first();
-        if ($order) {
-            $order->status_wfm = 'done close cancel';
-            $order->order_status_n = 'CANCEL';
-            $order->milestone = 'QC Processed - Marked as Cancel';
-            $order->save();
-            return Redirect::back()->with('success', "Order ID {$order_id} diubah menjadi 'Cancel'.");
-        }
-        return Redirect::back()->with('error', "Order ID {$order_id} tidak ditemukan.");
     }
 
     public function uploadCancel(Request $request)
@@ -445,16 +568,28 @@ class AnalysisDigitalProductController extends Controller
 
     public function syncCanceledOrders()
     {
-        $orderIdsToUpdate = CanceledOrder::pluck('order_id');
+        // Ambil semua order_id, trim spasi, filter nilai kosong, LALU UBAH SEMUA JADI STRING
+        $orderIdsToUpdate = CanceledOrder::pluck('order_id')
+            ->map('trim')
+            ->filter()
+            ->map(fn($id) => (string) $id) // <-- TAMBAHKAN BARIS INI
+            ->unique(); // Tambahkan unique untuk mencegah duplikasi
 
         if ($orderIdsToUpdate->isEmpty()) {
             return Redirect::back()->with('error', 'Tidak ada data order cancel yang perlu disinkronkan.');
         }
 
+        // Sekarang $orderIdsToUpdate berisi array string yang siap dibandingkan
         $ordersToLog = DocumentData::whereIn('order_id', $orderIdsToUpdate)
             ->where('status_wfm', 'in progress')
-            ->get(['order_id', 'product as product_name', 'customer_name', 'nama_witel', 'status_wfm']);
+            ->get();
 
+        if ($ordersToLog->isEmpty()) {
+            CanceledOrder::truncate(); // Tetap bersihkan tabel sementara
+            return Redirect::back()->with('info', 'Tidak ada order "In Progress" yang cocok untuk di-cancel dari daftar yang diberikan.');
+        }
+
+        // Lakukan update HANYA pada order yang sudah kita ambil datanya
         $updatedCount = DocumentData::whereIn('order_id', $ordersToLog->pluck('order_id'))
             ->update([
                 'status_wfm' => 'done close cancel',
@@ -462,10 +597,12 @@ class AnalysisDigitalProductController extends Controller
                 'order_status_n' => 'CANCEL'
             ]);
 
+        // Buat log dari variabel $ordersToLog yang sudah kita siapkan
         $logs = $ordersToLog->map(function ($order) {
             return [
                 'order_id' => $order->order_id,
-                'product_name' => $order->product_name,
+                // Pastikan kolom product_name ada di model atau gunakan kolom 'product'
+                'product_name' => $order->product_name ?? $order->product,
                 'customer_name' => $order->customer_name,
                 'nama_witel' => $order->nama_witel,
                 'status_lama' => $order->status_wfm,
@@ -480,27 +617,9 @@ class AnalysisDigitalProductController extends Controller
             UpdateLog::insert($logs);
         }
 
+        // Kosongkan tabel sementara
         CanceledOrder::truncate();
 
         return Redirect::back()->with('success', "Sinkronisasi selesai. Berhasil meng-cancel {$updatedCount} order.");
     }
-
-     public function uploadStatusFile(Request $request)
-    {
-        $validated = $request->validate([
-            'document' => 'required|file|mimes:xlsx,xls,csv',
-            'type' => 'required|string|in:complete,cancel',
-        ]);
-
-        $file = $validated['document'];
-        $type = $validated['type'];
-
-        $statusToSet = ($type === 'complete') ? 'completed' : 'canceled';
-        $path = $file->store("excel-imports-status", 'local');
-
-        ProcessStatusFile::dispatch($path, $statusToSet, $file->getClientOriginalName());
-
-        return Redirect::back()->with('success', "File Order {$type} diterima. Proses akan berjalan di latar belakang.");
-    }
 }
-

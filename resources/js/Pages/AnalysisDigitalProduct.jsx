@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout';
-import { Head, useForm, usePage, router, Link } from '@inertiajs/react'; // <-- 1. Tambahkan Link
+import { Head, useForm, usePage, router, Link } from '@inertiajs/react';
 import InputLabel from '@/Components/InputLabel';
 import InputError from '@/Components/InputError';
 import PrimaryButton from '@/Components/PrimaryButton';
@@ -14,31 +14,25 @@ import { CSS } from '@dnd-kit/utilities';
 // Helper & Utility Components
 // ===================================================================
 
-// 2. Tambahkan komponen Pagination baru
 const Pagination = ({ links = [] }) => {
     if (links.length <= 3) return null;
 
     return (
         <div className="flex flex-wrap justify-center items-center mt-4 space-x-1">
             {links.map((link, index) => (
-                link.url === null ?
-                    <div
-                        key={index}
-                        className="px-3 py-2 text-sm text-gray-400 border rounded"
-                        dangerouslySetInnerHTML={{ __html: link.label }}
-                    /> :
-                    <Link
-                        key={index}
-                        href={link.url}
-                        className={`px-3 py-2 text-sm border rounded hover:bg-blue-600 hover:text-white transition-colors ${link.active ? 'bg-blue-600 text-white' : 'bg-white text-gray-700'}`}
-                        dangerouslySetInnerHTML={{ __html: link.label }}
-                        preserveScroll
-                        preserveState
-                    />
+                <Link
+                    key={index}
+                    href={link.url ?? '#'}
+                    className={`px-3 py-2 text-sm border rounded hover:bg-blue-600 hover:text-white transition-colors ${link.active ? 'bg-blue-600 text-white' : 'bg-white text-gray-700'} ${!link.url ? 'text-gray-400 cursor-not-allowed' : ''}`}
+                    dangerouslySetInnerHTML={{ __html: link.label }}
+                    preserveScroll
+                    preserveState
+                />
             ))}
         </div>
     );
 };
+
 
 const formatPercent = (value) => {
     const num = Number(value);
@@ -47,6 +41,10 @@ const formatPercent = (value) => {
 };
 const formatRupiah = (value, decimals = 2) => (Number(value) || 0).toFixed(decimals);
 const formatNumber = (value) => Number(value) || 0;
+const formatDate = (dateString) => {
+    if (!dateString) return '-';
+    return new Date(dateString).toLocaleString('id-ID', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' });
+};
 
 const CollapsibleCard = ({ title, isExpanded, onToggle, children }) => {
     return (
@@ -107,27 +105,32 @@ const EditReportForm = ({ currentSegment, reportData, period }) => {
         return Array.from(new Set(reportData.map(item => item.nama_witel)));
     }, [reportData]);
 
+    // Definisikan produk untuk label dan input agar lebih rapi
+    const products = [
+        { key: 'n', label: 'Netmonk' },
+        { key: 'o', label: 'OCA' },
+        { key: 'ae', label: 'Antares' },
+        { key: 'ps', label: 'Pijar Sekolah' }
+    ];
+
     const { data, setData, post, processing, errors } = useForm({
         targets: {},
         segment: currentSegment,
         period: period + '-01',
     });
 
+    // ... (useEffect dan fungsi lainnya tetap sama) ...
     useEffect(() => {
         const initialTargets = {};
         reportData.forEach(item => {
             initialTargets[item.nama_witel] = {
                 prov_comp: {
-                    n: item.prov_comp_n_target || 0,
-                    o: item.prov_comp_o_target || 0,
-                    ae: item.prov_comp_ae_target || 0,
-                    ps: item.prov_comp_ps_target || 0,
+                    n: item.prov_comp_n_target || 0, o: item.prov_comp_o_target || 0,
+                    ae: item.prov_comp_ae_target || 0, ps: item.prov_comp_ps_target || 0,
                 },
                 revenue: {
-                    n: item.revenue_n_target || 0,
-                    o: item.revenue_o_target || 0,
-                    ae: item.revenue_ae_target || 0,
-                    ps: item.revenue_ps_target || 0,
+                    n: item.revenue_n_target || 0, o: item.revenue_o_target || 0,
+                    ae: item.revenue_ae_target || 0, ps: item.revenue_ps_target || 0,
                 }
             };
         });
@@ -140,9 +143,7 @@ const EditReportForm = ({ currentSegment, reportData, period }) => {
 
     function submit(e) {
         e.preventDefault();
-        post(route('analysisDigitalProduct.targets'), {
-            preserveScroll: true,
-        });
+        post(route('analysisDigitalProduct.targets'), { preserveScroll: true, });
     }
 
     const handleInputChange = (witel, metric, product, value) => {
@@ -157,13 +158,11 @@ const EditReportForm = ({ currentSegment, reportData, period }) => {
             }
         });
     };
+    // ===================================================================
 
     return (
         <form onSubmit={submit} className="bg-white p-6 rounded-lg shadow-md text-sm">
-            <div
-                className="flex justify-between items-center cursor-pointer mb-4"
-                onClick={() => setIsExpanded(!isExpanded)}
-            >
+            <div className="flex justify-between items-center cursor-pointer mb-4" onClick={() => setIsExpanded(!isExpanded)}>
                 <h3 className="font-semibold text-lg text-gray-800">Edit Target</h3>
                 <button type="button" className="text-blue-600 text-sm font-bold hover:underline p-2">
                     {isExpanded ? 'Minimize' : 'Expand'}
@@ -178,14 +177,22 @@ const EditReportForm = ({ currentSegment, reportData, period }) => {
                             {witelList.map(witel => (
                                 <div key={`${witel}-prov`} className="mb-3">
                                     <h4 className="font-bold text-gray-600">{witel}</h4>
-                                    <div className="grid grid-cols-4 gap-2 mt-1">
-                                        {['n', 'o', 'ae', 'ps'].map(p => (
+
+                                    {/* TAMBAHKAN LABEL DI SINI */}
+                                    <div className="grid grid-cols-4 gap-2 mt-2 mb-1 px-1">
+                                        {products.map(p => (
+                                            <label key={p.key} className="text-xs font-semibold text-gray-500">{p.label}</label>
+                                        ))}
+                                    </div>
+
+                                    <div className="grid grid-cols-4 gap-2">
+                                        {products.map(p => (
                                             <input
-                                                key={p}
+                                                key={p.key}
                                                 type="number"
-                                                value={data.targets[witel]?.prov_comp?.[p] ?? ''}
-                                                onChange={e => handleInputChange(witel, 'prov_comp', p, e.target.value)}
-                                                placeholder={p.toUpperCase()}
+                                                value={data.targets[witel]?.prov_comp?.[p.key] ?? ''}
+                                                onChange={e => handleInputChange(witel, 'prov_comp', p.key, e.target.value)}
+                                                placeholder={p.label}
                                                 className="p-1 border rounded w-full"
                                             />
                                         ))}
@@ -200,15 +207,23 @@ const EditReportForm = ({ currentSegment, reportData, period }) => {
                         {witelList.map(witel => (
                             <div key={`${witel}-rev`} className="mb-3">
                                 <h4 className="font-bold text-gray-600">{witel}</h4>
-                                <div className="grid grid-cols-4 gap-2 mt-1">
-                                    {['n', 'o', 'ae', 'ps'].map(p => (
+
+                                {/* TAMBAHKAN LABEL DI SINI JUGA */}
+                                <div className="grid grid-cols-4 gap-2 mt-2 mb-1 px-1">
+                                    {products.map(p => (
+                                        <label key={p.key} className="text-xs font-semibold text-gray-500">{p.label}</label>
+                                    ))}
+                                </div>
+
+                                <div className="grid grid-cols-4 gap-2">
+                                    {products.map(p => (
                                         <input
-                                            key={p}
+                                            key={p.key}
                                             type="number"
                                             step="0.01"
-                                            value={data.targets[witel]?.revenue?.[p] ?? ''}
-                                            onChange={e => handleInputChange(witel, 'revenue', p, e.target.value)}
-                                            placeholder={p.toUpperCase()}
+                                            value={data.targets[witel]?.revenue?.[p.key] ?? ''}
+                                            onChange={e => handleInputChange(witel, 'revenue', p.key, e.target.value)}
+                                            placeholder={p.label}
                                             className="p-1 border rounded w-full"
                                         />
                                     ))}
@@ -530,60 +545,77 @@ const SmeReportTable = ({ data = [], decimalPlaces, tableConfig, setTableConfig 
     );
 };
 
-const InProgressTable = ({ data = [] }) => {
-    const handleCompleteClick = (orderId) => {
-        if (confirm(`Anda yakin ingin mengubah status Order ID: ${orderId} menjadi "Complete"?`)) {
-            router.put(route('manual.update.complete', { order_id: orderId }), {}, {
-                preserveScroll: true,
-                onSuccess: () => router.reload({ preserveState: false }),
-            });
-        }
-    };
-    const handleCancelClick = (orderId) => {
-        if (confirm(`Anda yakin ingin membatalkan Order ID: ${orderId}?`)) {
-            router.put(route('manual.update.cancel', { order_id: orderId }), {}, {
-                preserveScroll: true,
-                onSuccess: () => router.reload({ preserveState: false }),
-            });
-        }
-    };
-    const formatDate = (dateString) => {
-        if (!dateString) return '-';
-        return new Date(dateString).toLocaleString('id-ID', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' });
-    };
+const InProgressTable = ({ dataPaginator = { data: [], links: [], from: 0 } }) => {
+    const handleCompleteClick = (orderId) => { if (confirm(`Anda yakin ingin mengubah status Order ID: ${orderId} menjadi "Complete"?`)) { router.put(route('manual.update.complete', { order_id: orderId }), {}, { preserveScroll: true, onSuccess: () => router.reload({ preserveState: false }) }); } };
+    const handleCancelClick = (orderId) => { if (confirm(`Anda yakin ingin membatalkan Order ID: ${orderId}?`)) { router.put(route('manual.update.cancel', { order_id: orderId }), {}, { preserveScroll: true, onSuccess: () => router.reload({ preserveState: false }) }); } };
     return (
-        <div className="overflow-x-auto text-sm">
-            <table className="w-full">
-                <thead className="bg-gray-50">
-                    <tr className="text-left font-semibold text-gray-600">
-                        <th className="p-3">No.</th><th className="p-3">Milestone</th><th className="p-3">Segment</th><th className="p-3">Status Order</th><th className="p-3">Product Name</th><th className="p-3">Order ID</th><th className="p-3">Witel</th><th className="p-3">Customer Name</th><th className="p-3">Order Created Date</th><th className="p-3 text-center">Action</th>
-                    </tr>
-                </thead>
-                <tbody className="divide-y bg-white">
-                    {data.length > 0 ? data.map((item, index) => (
-                        <tr key={item.order_id} className="text-gray-700 hover:bg-gray-50">
-                            <td className="p-3">{index + 1}</td><td className="p-3">{item.milestone}</td><td className="p-3">{item.segment}</td>
-                            <td className="p-3 whitespace-nowrap"><span className="px-2 py-1 font-semibold leading-tight text-blue-700 bg-blue-100 rounded-full">{item.order_status_n}</span></td>
-                            <td className="p-3">{item.product_name}</td><td className="p-3 font-mono">{item.order_id}</td><td className="p-3">{item.nama_witel}</td><td className="p-3">{item.customer_name}</td><td className="p-3">{formatDate(item.order_created_date)}</td>
-                            <td className="p-3 text-center">
-                                <div className="flex justify-center items-center gap-2">
-                                    <button onClick={() => handleCompleteClick(item.order_id)} className="px-3 py-1 text-xs font-bold text-white bg-green-500 rounded-md hover:bg-green-600">COMPLETE</button>
-                                    <button onClick={() => handleCancelClick(item.order_id)} className="px-3 py-1 text-xs font-bold text-white bg-red-500 rounded-md hover:bg-red-600">CANCEL</button>
-                                </div>
-                            </td>
+        <>
+            <div className="overflow-x-auto text-sm">
+                <table className="w-full">
+                    <thead className="bg-gray-50">
+                        <tr className="text-left font-semibold text-gray-600">
+                            <th className="p-3">No.</th><th className="p-3">Milestone</th><th className="p-3">Status Order</th><th className="p-3">Product Name</th><th className="p-3">Order ID</th><th className="p-3">Witel</th><th className="p-3">Customer Name</th><th className="p-3">Order Created Date</th><th className="p-3 text-center">Action</th>
                         </tr>
-                    )) : (
-                        <tr><td colSpan="10" className="p-4 text-center text-gray-500">Tidak ada data yang sesuai dengan filter.</td></tr>
-                    )}
-                </tbody>
-            </table>
-        </div>
+                    </thead>
+                    <tbody className="divide-y bg-white">
+                        {dataPaginator.data.length > 0 ? dataPaginator.data.map((item, index) => (
+                            <tr key={item.order_id} className="text-gray-700 hover:bg-gray-50">
+                                <td className="p-3">{dataPaginator.from + index}</td>
+                                <td className="p-3">{item.milestone}</td>
+                                <td className="p-3 whitespace-nowrap"><span className="px-2 py-1 font-semibold leading-tight text-blue-700 bg-blue-100 rounded-full">{item.order_status_n}</span></td>
+                                <td className="p-3">{item.product_name}</td><td className="p-3 font-mono">{item.order_id}</td><td className="p-3">{item.nama_witel}</td><td className="p-3">{item.customer_name}</td><td className="p-3">{formatDate(item.order_created_date)}</td>
+                                <td className="p-3 text-center">
+                                    <div className="flex justify-center items-center gap-2">
+                                        <button onClick={() => handleCompleteClick(item.order_id)} className="px-3 py-1 text-xs font-bold text-white bg-green-500 rounded-md hover:bg-green-600">COMPLETE</button>
+                                        <button onClick={() => handleCancelClick(item.order_id)} className="px-3 py-1 text-xs font-bold text-white bg-red-500 rounded-md hover:bg-red-600">CANCEL</button>
+                                    </div>
+                                </td>
+                            </tr>
+                        )) : (<tr><td colSpan="9" className="p-4 text-center text-gray-500">Tidak ada data yang sesuai dengan filter.</td></tr>)}
+                    </tbody>
+                </table>
+            </div>
+            <Pagination links={dataPaginator.links} />
+        </>
     );
 };
 
-// 3. Modifikasi Komponen HistoryTable
-const HistoryTable = ({ historyData = { data: [], links: [] } }) => {
-    const formatDate = (dateString) => {
+const CompleteTable = ({ dataPaginator = { data: [], links: [] } }) => {
+    const handleSetInProgress = (orderId) => { if (confirm(`Anda yakin ingin mengembalikan Order ID ${orderId} ke status "In Progress"?`)) { router.put(route('complete.update.progress', { order_id: orderId }), {}, { preserveScroll: true, onSuccess: () => router.reload({ preserveState: false }) }); } };
+    const handleSetCancel = (orderId) => { if (confirm(`Anda yakin ingin mengubah status Order ID ${orderId} menjadi "Cancel"?`)) { router.put(route('complete.update.cancel', { order_id: orderId }), {}, { preserveScroll: true, onSuccess: () => router.reload({ preserveState: false }) }); } };
+    return (
+        <>
+            <div className="overflow-x-auto text-sm">
+                <p className="text-gray-500 mb-2">Menampilkan data order yang sudah berstatus "Complete".</p>
+                <table className="w-full">
+                    <thead className="bg-gray-50">
+                        <tr className="text-left font-semibold text-gray-600">
+                            <th className="p-3">No.</th><th className="p-3">Milestone</th><th className="p-3">Order ID</th><th className="p-3">Product Name</th><th className="p-3">Witel</th><th className="p-3">Customer Name</th><th className="p-3">Update Time</th><th className="p-3 text-center">Aksi</th>
+                        </tr>
+                    </thead>
+                    <tbody className="divide-y bg-white">
+                        {dataPaginator.data.length > 0 ? dataPaginator.data.map((item, index) => (
+                            <tr key={item.order_id} className="text-gray-700 hover:bg-gray-50">
+                                <td className="p-3">{dataPaginator.from + index}</td><td className="p-3">{item.milestone}</td><td className="p-3 font-mono">{item.order_id}</td><td className="p-3">{item.product_name}</td><td className="p-3">{item.nama_witel}</td><td className="p-3">{item.customer_name}</td><td className="p-3">{formatDate(item.updated_at)}</td>
+                                <td className="p-3 text-center">
+                                    <div className="flex justify-center items-center gap-2">
+                                        <button onClick={() => handleSetInProgress(item.order_id)} className="px-3 py-1 text-xs font-bold text-white bg-blue-500 rounded-md hover:bg-blue-600">Ke In Progress</button>
+                                        <button onClick={() => handleSetCancel(item.order_id)} className="px-3 py-1 text-xs font-bold text-white bg-red-500 rounded-md hover:bg-red-600">Ke Cancel</button>
+                                    </div>
+                                </td>
+                            </tr>
+                        )) : (<tr><td colSpan="8" className="p-4 text-center text-gray-500">Tidak ada data Complete saat ini.</td></tr>)}
+                    </tbody>
+                </table>
+            </div>
+            <Pagination links={dataPaginator.links} />
+        </>
+    );
+};
+
+// GANTI SELURUH KOMPONEN HistoryTable ANDA DENGAN INI
+const HistoryTable = ({ historyData = { data: [], links: [] } }) => { // <-- Menerima objek historyData
+    const formatDateFull = (dateString) => {
         if (!dateString) return '-';
         return new Date(dateString).toLocaleString('id-ID', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit' });
     };
@@ -607,9 +639,10 @@ const HistoryTable = ({ historyData = { data: [], links: [] } }) => {
                     </tr>
                 </thead>
                 <tbody className="divide-y bg-white">
+                    {/* Mengakses array .data dari historyData */}
                     {historyData.data.length > 0 ? historyData.data.map((item) => (
                         <tr key={item.id} className="text-gray-700 hover:bg-gray-50">
-                            <td className="p-3 font-semibold">{formatDate(item.created_at)}</td><td className="p-3 font-mono">{item.order_id}</td><td className="p-3">{item.customer_name}</td><td className="p-3">{item.nama_witel}</td><td className="p-3"><StatusChip text={item.status_lama} /></td><td className="p-3"><StatusChip text={item.status_baru} /></td><td className="p-3 font-medium text-gray-600">{item.sumber_update}</td>
+                            <td className="p-3 font-semibold">{formatDateFull(item.created_at)}</td><td className="p-3 font-mono">{item.order_id}</td><td className="p-3">{item.customer_name}</td><td className="p-3">{item.nama_witel}</td><td className="p-3"><StatusChip text={item.status_lama} /></td><td className="p-3"><StatusChip text={item.status_baru} /></td><td className="p-3 font-medium text-gray-600">{item.sumber_update}</td>
                         </tr>
                     )) : (
                         <tr><td colSpan="7" className="p-4 text-center text-gray-500">Belum ada histori update yang tercatat.</td></tr>
@@ -621,63 +654,41 @@ const HistoryTable = ({ historyData = { data: [], links: [] } }) => {
     );
 };
 
-const QcTable = ({ data = [] }) => {
-    const formatDate = (dateString) => {
-        if (!dateString) return '-';
-        return new Date(dateString).toLocaleString('id-ID', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' });
-    };
-    const handleSetInProgress = (orderId) => {
-        if (confirm(`Anda yakin ingin mengembalikan Order ID ${orderId} ke status "In Progress"?`)) {
-            router.put(route('qc.update.progress', { order_id: orderId }), {}, {
-                preserveScroll: true,
-                onSuccess: () => router.reload({ preserveState: false }),
-            });
-        }
-    };
-    const handleSetDone = (orderId) => {
-        if (confirm(`Anda yakin ingin mengubah status Order ID ${orderId} menjadi "Done Close Bima"?`)) {
-            router.put(route('qc.update.done', { order_id: orderId }), {}, {
-                preserveScroll: true,
-                onSuccess: () => router.reload({ preserveState: false }),
-            });
-        }
-    };
-    const handleSetCancel = (orderId) => {
-        if (confirm(`Anda yakin ingin mengubah status Order ID ${orderId} menjadi "Done Close Cancel"?`)) {
-            // Memanggil rute baru 'qc.update.cancel'
-            router.put(route('qc.update.cancel', { order_id: orderId }), {}, {
-                preserveScroll: true,
-                onSuccess: () => router.reload({ preserveState: false }),
-            });
-        }
-    };
+// GANTI SELURUH KOMPONEN QcTable ANDA DENGAN INI
+const QcTable = ({ dataPaginator = { data: [], links: [], from: 0 } }) => { // <-- Menerima objek paginator
+    const handleSetInProgress = (id) => { if (confirm(`Kembalikan Order ID ini ke "In Progress"?`)) { router.put(route('qc.update.progress', { order_id: id }), {}, { preserveScroll: true, onSuccess: () => router.reload({ preserveState: false }) }); } };
+    const handleSetDone = (id) => { if (confirm(`Ubah status Order ID ini menjadi "Done Close Bima"?`)) { router.put(route('qc.update.done', { order_id: id }), {}, { preserveScroll: true, onSuccess: () => router.reload({ preserveState: false }) }); } };
+    const handleSetCancel = (id) => { if (confirm(`Ubah status Order ID ini menjadi "Done Close Cancel"?`)) { router.put(route('qc.update.cancel', { order_id: id }), {}, { preserveScroll: true, onSuccess: () => router.reload({ preserveState: false }) }); } };
+
     return (
-        <div className="overflow-x-auto text-sm">
-            <p className="text-gray-500 mb-2">Menampilkan data order yang sedang dalam proses Quality Control (QC).</p>
-            <table className="w-full">
-                <thead className="bg-gray-50">
-                    <tr className="text-left font-semibold text-gray-600">
-                        <th className="p-3">No.</th><th className="p-3">Milestone</th><th className="p-3">Order ID</th><th className="p-3">Product Name</th><th className="p-3">Witel</th><th className="p-3">Customer Name</th><th className="p-3">Update Time</th><th className="p-3 text-center">Aksi</th>
-                    </tr>
-                </thead>
-                <tbody className="divide-y bg-white">
-                    {data.length > 0 ? data.map((item, index) => (
-                        <tr key={item.order_id} className="text-gray-700 hover:bg-gray-50">
-                            <td className="p-3">{index + 1}</td><td className="p-3">{item.milestone}</td><td className="p-3 font-mono">{item.order_id}</td><td className="p-3">{item.product}</td><td className="p-3">{item.nama_witel}</td><td className="p-3">{item.customer_name}</td><td className="p-3">{formatDate(item.updated_at)}</td>
-                            <td className="p-3 text-center">
-                                <div className="flex justify-center items-center gap-2">
-                                    <button onClick={() => handleSetInProgress(item.order_id)} className="px-3 py-1 text-xs font-bold text-white bg-blue-500 rounded-md hover:bg-blue-600">In Progress</button>
-                                    <button onClick={() => handleSetDone(item.order_id)} className="px-3 py-1 text-xs font-bold text-white bg-green-500 rounded-md hover:bg-green-600">Done Close Bima</button>
-                                    <button onClick={() => handleSetCancel(item.order_id)} className="px-3 py-1 text-xs font-bold text-white bg-red-500 rounded-md hover:bg-red-600">Cancel</button>
-                                </div>
-                            </td>
+        <>
+            <div className="overflow-x-auto text-sm">
+                <p className="text-gray-500 mb-2">Menampilkan data order yang sedang dalam proses Quality Control (QC).</p>
+                <table className="w-full">
+                    <thead className="bg-gray-50">
+                        <tr className="text-left font-semibold text-gray-600">
+                            <th className="p-3">No.</th><th className="p-3">Milestone</th><th className="p-3">Order ID</th><th className="p-3">Product Name</th><th className="p-3">Witel</th><th className="p-3">Customer Name</th><th className="p-3">Update Time</th><th className="p-3 text-center">Aksi</th>
                         </tr>
-                    )) : (
-                        <tr><td colSpan="8" className="p-4 text-center text-gray-500">Tidak ada data QC saat ini.</td></tr>
-                    )}
-                </tbody>
-            </table>
-        </div>
+                    </thead>
+                    <tbody className="divide-y bg-white">
+                        {/* Mengakses array .data dari paginator */}
+                        {dataPaginator.data.length > 0 ? dataPaginator.data.map((item, index) => (
+                            <tr key={item.id} className="text-gray-700 hover:bg-gray-50">
+                                <td className="p-3">{dataPaginator.from + index}</td><td className="p-3">{item.milestone}</td><td className="p-3 font-mono">{item.order_id}</td><td className="p-3">{item.product}</td><td className="p-3">{item.nama_witel}</td><td className="p-3">{item.customer_name}</td><td className="p-3">{formatDate(item.updated_at)}</td>
+                                <td className="p-3 text-center">
+                                    <div className="flex justify-center items-center gap-2">
+                                        <button onClick={() => handleSetInProgress(item.id)} className="px-3 py-1 text-xs font-bold text-white bg-blue-500 rounded-md hover:bg-blue-600">In Progress</button>
+                                        <button onClick={() => handleSetDone(item.id)} className="px-3 py-1 text-xs font-bold text-white bg-green-500 rounded-md hover:bg-green-600">Done Bima</button>
+                                        <button onClick={() => handleSetCancel(item.id)} className="px-3 py-1 text-xs font-bold text-white bg-red-500 rounded-md hover:bg-red-600">Cancel</button>
+                                    </div>
+                                </td>
+                            </tr>
+                        )) : (<tr><td colSpan="8" className="p-4 text-center text-gray-500">Tidak ada data QC saat ini.</td></tr>)}
+                    </tbody>
+                </table>
+            </div>
+            <Pagination links={dataPaginator.links} />
+        </>
     );
 };
 
@@ -707,6 +718,10 @@ const KpiTable = ({ data = [], accountOfficers = [], openModal }) => {
         </div>
     );
 };
+
+// ===================================================================
+// Table Configurator Component
+// ===================================================================
 
 // ===================================================================
 // Table Configurator Component
@@ -980,10 +995,25 @@ const TableConfigurator = ({ tableConfig, setTableConfig }) => {
 // ===================================================================
 // Main Page Component
 // ===================================================================
-export default function AnalysisDigitalProduct({ auth, reportData = [], currentSegment = 'SME', period = '', inProgressData = [], newData = [], newStatusData, historyData = { data: [], links: [], total: 0 }, accountOfficers = [], kpiData = [], qcData = [], currentInProgressYear, flash = {}, errors: pageErrors = {} }) {
+export default function AnalysisDigitalProduct({
+    auth,
+    reportData = [],
+    currentSegment = 'SME',
+    period = '',
+    inProgressData = { data: [], links: [] },
+    completeData = { data: [], links: [] },
+    historyData = { data: [], links: [], total: 0 },
+    accountOfficers = [],
+    kpiData = [],
+    qcData = { data: [], links: [] },
+    currentInProgressYear,
+    filters = {},
+    flash = {},
+    errors: pageErrors = {}
+}) {
 
     const [activeDetailView, setActiveDetailView] = useState('inprogress');
-    const [witelFilter, setWitelFilter] = useState('ALL');
+    const [search, setSearch] = useState(filters.search || '');
     const [decimalPlaces, setDecimalPlaces] = useState(2);
 
     const [tableConfig, setTableConfig] = useState(() => {
@@ -1014,19 +1044,36 @@ export default function AnalysisDigitalProduct({ auth, reportData = [], currentS
     const [progressStates, setProgressStates] = useState({ mentah: null, complete: null, cancel: null });
     const { props: pageProps } = usePage();
     useEffect(() => {
-        const { batchId, jobType } = pageProps.flash || {};
+        // 1. Baca batch_id dan job_type dari parameter URL
+        const urlParams = new URLSearchParams(window.location.search);
+        const batchId = urlParams.get('batch_id');
+        const jobType = urlParams.get('job_type');
+
+        // Fungsi untuk membersihkan URL setelah proses selesai
+        const cleanUrl = () => {
+            const currentUrl = new URL(window.location.href);
+            currentUrl.searchParams.delete('batch_id');
+            currentUrl.searchParams.delete('job_type');
+            // Ganti URL di history browser tanpa me-reload halaman
+            window.history.replaceState({}, document.title, currentUrl.toString());
+        };
+
+        // 2. Jalankan polling jika parameter ditemukan dan job belum berjalan
         if (batchId && jobType && progressStates[jobType] === null) {
             setProgressStates(prev => ({ ...prev, [jobType]: 0 }));
+
             const interval = setInterval(() => {
                 axios.get(route('import.progress', { batchId }))
                     .then(response => {
                         const progress = response.data.progress;
                         setProgressStates(prev => ({ ...prev, [jobType]: progress }));
+
                         if (progress >= 100) {
                             clearInterval(interval);
                             setTimeout(() => {
                                 setProgressStates(prev => ({ ...prev, [jobType]: null }));
-                                router.reload({ preserveState: false });
+                                cleanUrl(); // Bersihkan URL sebelum reload
+                                router.reload({ preserveState: false, preserveScroll: true });
                             }, 2000);
                         }
                     })
@@ -1034,15 +1081,18 @@ export default function AnalysisDigitalProduct({ auth, reportData = [], currentS
                         console.error("Gagal mengambil progres job:", error);
                         clearInterval(interval);
                         setProgressStates(prev => ({ ...prev, [jobType]: null }));
+                        cleanUrl(); // Bersihkan URL jika terjadi error
                     });
             }, 2000);
+
+            // Cleanup function jika komponen di-unmount sebelum job selesai
             return () => clearInterval(interval);
         }
-    }, [pageProps.flash]);
+    }, []);
 
     const { data: uploadData, setData: setUploadData, post: postUpload, processing, errors, cancel } = useForm({ document: null });
-    const { data: completeData, setData: setCompleteData, post: postComplete, processing: completeProcessing, errors: completeErrors, reset: completeReset } = useForm({ complete_document: null });
-    const { data: cancelData, setData: setCancelData, post: postCancel, processing: cancelProcessing, errors: cancelErrors, reset: cancelReset } = useForm({ cancel_document: null });
+    const { data: completeDataForm, setData: setCompleteDataForm, post: postComplete, processing: completeProcessing, errors: completeErrors, reset: completeReset } = useForm({ complete_document: null });
+    const { data: cancelDataForm, setData: setCancelDataForm, post: postCancel, processing: cancelProcessing, errors: cancelErrors, reset: cancelReset } = useForm({ cancel_document: null });
 
     const submitCompleteFile = (e) => { e.preventDefault(); postComplete(route('analysisDigitalProduct.uploadComplete'), { forceFormData: true, onSuccess: () => completeReset() }); };
     const handleSyncClick = () => { if (confirm('Anda yakin ingin menjalankan proses sinkronisasi untuk mengubah status order menjadi complete?')) { router.post(route('analysisDigitalProduct.syncComplete'), {}, { preserveScroll: true }); } };
@@ -1057,10 +1107,30 @@ export default function AnalysisDigitalProduct({ auth, reportData = [], currentS
     const openModal = (agent = null) => { setEditingAgent(agent); setIsModalOpen(true); };
     const closeModal = () => { setIsModalOpen(false); setEditingAgent(null); };
 
-    function handleSegmentChange(e) { router.get(route('analysisDigitalProduct.index'), { segment: e.target.value, period: period }, { preserveState: true, preserveScroll: true, replace: true }); }
-    function handlePeriodChange(e) { router.get(route('analysisDigitalProduct'), { segment: currentSegment, period: e.target.value }, { preserveState: true, replace: true, preserveScroll: true, in_progress_year: currentInProgressYear }); }
+    const handleFilterChange = (newFilters) => {
+        const query = {
+            search: search,
+            segment: currentSegment,
+            period: period,
+            in_progress_year: currentInProgressYear,
+            ...newFilters
+        };
+        router.get(route('analysisDigitalProduct.index'), query, {
+            preserveState: true,
+            preserveScroll: true,
+            replace: true
+        });
+    };
+
+    const handleSearch = (e) => {
+        e.preventDefault();
+        handleFilterChange({ search: search, page: 1 });
+    };
+
+    function handleSegmentChange(e) { handleFilterChange({ segment: e.target.value, page: 1 }); }
+    function handlePeriodChange(e) { handleFilterChange({ period: e.target.value, page: 1 }); }
+    function handleInProgressYearChange(e) { handleFilterChange({ in_progress_year: e.target.value, page: 1 }); }
     function handleUploadSubmit(e) { e.preventDefault(); postUpload(route('analysisDigitalProduct.upload')); }
-    function handleInProgressYearChange(e) { router.get(route('analysisDigitalProduct'), { segment: currentSegment, period: period, in_progress_year: e.target.value }, { preserveState: true, replace: true, preserveScroll: true }); }
 
     const detailsTotals = useMemo(() => {
         if (!reportData || reportData.length === 0) return { ogp: 0, closed: 0, total: 0 };
@@ -1076,13 +1146,19 @@ export default function AnalysisDigitalProduct({ auth, reportData = [], currentS
 
     const generatePeriodOptions = () => {
         const options = [];
+        // Mulai dari tanggal 1 bulan ini untuk menghindari bug
         let date = new Date();
-        for (let i = 0; i < 24; i++) { // Increased to 24 months
+        date.setDate(1);
+
+        for (let i = 0; i < 24; i++) {
             const year = date.getFullYear();
             const month = (date.getMonth() + 1).toString().padStart(2, '0');
             const value = `${year}-${month}`;
             const label = date.toLocaleString('id-ID', { month: 'long', year: 'numeric' });
+
             options.push(<option key={value} value={value}>{label}</option>);
+
+            // Pindah ke tanggal 1 bulan sebelumnya
             date.setMonth(date.getMonth() - 1);
         }
         return options;
@@ -1098,12 +1174,6 @@ export default function AnalysisDigitalProduct({ auth, reportData = [], currentS
         return options;
     };
 
-    const uniqueWitelList = useMemo(() => ['ALL', ...new Set(inProgressData.map(item => item.nama_witel))], [inProgressData]);
-    const filteredInProgressData = useMemo(() => {
-        if (witelFilter === 'ALL') return inProgressData;
-        return inProgressData.filter(item => item.nama_witel === witelFilter);
-    }, [inProgressData, witelFilter]);
-
     const DetailTabButton = ({ viewName, currentView, setView, children }) => (
         <button onClick={() => setView(viewName)} className={`px-4 py-2 text-sm font-semibold rounded-md transition-colors ${currentView === viewName ? 'bg-blue-600 text-white shadow' : 'bg-white text-gray-600 hover:bg-gray-100'}`}>{children}</button>
     );
@@ -1117,7 +1187,10 @@ export default function AnalysisDigitalProduct({ auth, reportData = [], currentS
 
             <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
                 <div className="lg:col-span-3 space-y-6">
+                    {/* [DIKEMBALIKAN] Komponen Konfigurator Tabel */}
                     <TableConfigurator tableConfig={tableConfig} setTableConfig={setTableConfig} />
+
+                    {/* [DIKEMBALIKAN] Komponen Tabel Laporan Utama */}
                     <div className="bg-white p-6 rounded-lg shadow-md">
                         <div className="flex flex-wrap justify-between items-center mb-4 gap-4">
                             <h3 className="font-semibold text-lg text-gray-800">Data Report</h3>
@@ -1141,29 +1214,45 @@ export default function AnalysisDigitalProduct({ auth, reportData = [], currentS
                     <div className="bg-white p-6 rounded-lg shadow-md">
                         <div className="flex flex-wrap justify-between items-center mb-4 gap-4">
                             <div className="flex items-center gap-2 border p-1 rounded-lg bg-gray-50 w-fit">
-                                <DetailTabButton viewName="inprogress" currentView={activeDetailView} setView={setActiveDetailView}>Data In Progress ({filteredInProgressData.length})</DetailTabButton>
-                                {/* 4. Update Tab Button Counter */}
-                                <DetailTabButton viewName="history" currentView={activeDetailView} setView={setActiveDetailView}>Update History ({historyData.total})</DetailTabButton>
-                                <DetailTabButton viewName="qc" currentView={activeDetailView} setView={setActiveDetailView}>Data QC ({qcData.length})</DetailTabButton>
+                                <DetailTabButton viewName="inprogress" currentView={activeDetailView} setView={setActiveDetailView}>In Progress ({inProgressData.total})</DetailTabButton>
+                                <DetailTabButton viewName="complete" currentView={activeDetailView} setView={setActiveDetailView}>Complete ({completeData.total})</DetailTabButton>
+                                <DetailTabButton viewName="qc" currentView={activeDetailView} setView={setActiveDetailView}>QC ({qcData.total})</DetailTabButton>
+                                <DetailTabButton viewName="history" currentView={activeDetailView} setView={setActiveDetailView}>History ({historyData.total})</DetailTabButton>
                                 <DetailTabButton viewName="kpi" currentView={activeDetailView} setView={setActiveDetailView}>KPI PO</DetailTabButton>
                             </div>
+
+                            {(activeDetailView === 'inprogress' || activeDetailView === 'complete' || activeDetailView === 'qc') && (
+                                <div className="flex items-center gap-4 flex-wrap">
+                                    <form onSubmit={handleSearch} className="flex items-center gap-2">
+                                        <input
+                                            type="text"
+                                            value={search}
+                                            onChange={e => setSearch(e.target.value)}
+                                            placeholder="Cari Order ID..."
+                                            className="border border-gray-300 rounded-md text-sm p-2 w-48"
+                                        />
+                                        <PrimaryButton type="submit">Cari</PrimaryButton>
+                                    </form>
+                                </div>
+                            )}
                             {activeDetailView === 'inprogress' && (
-                                <div className="flex items-center gap-4">
-                                    <select value={currentInProgressYear} onChange={handleInProgressYearChange} className="border border-gray-300 rounded-md text-sm p-2">
+                                <div className="flex items-center gap-2">
+                                    <select
+                                        value={currentInProgressYear}
+                                        onChange={handleInProgressYearChange}
+                                        className="border border-gray-300 rounded-md text-sm p-2"
+                                    >
                                         {generateYearOptions()}
-                                    </select>
-                                    <select value={witelFilter} onChange={e => setWitelFilter(e.target.value)} className="border border-gray-300 rounded-md text-sm p-2">
-                                        {uniqueWitelList.map(witel => <option key={witel} value={witel}>{witel === 'ALL' ? 'Semua Witel' : witel}</option>)}
                                     </select>
                                     <a href={route('analysisDigitalProduct.export.inprogress', { segment: currentSegment, in_progress_year: currentInProgressYear })} className="px-3 py-2 text-sm font-bold text-white bg-green-600 rounded-md hover:bg-green-700">Export Excel</a>
                                 </div>
                             )}
-                            {activeDetailView === 'kpi' && (<PrimaryButton onClick={() => openModal()}>Tambah Agen</PrimaryButton>)}
                         </div>
-                        {activeDetailView === 'inprogress' && <InProgressTable data={filteredInProgressData} />}
-                        {/* 5. Update Component Call */}
+
+                        {activeDetailView === 'inprogress' && <InProgressTable dataPaginator={inProgressData} />}
+                        {activeDetailView === 'complete' && <CompleteTable dataPaginator={completeData} />}
                         {activeDetailView === 'history' && <HistoryTable historyData={historyData} />}
-                        {activeDetailView === 'qc' && <QcTable data={qcData} />}
+                        {activeDetailView === 'qc' && <QcTable dataPaginator={qcData} />}
                         {activeDetailView === 'kpi' && <KpiTable data={kpiData} accountOfficers={accountOfficers} openModal={openModal} />}
                     </div>
                 </div>
@@ -1194,7 +1283,7 @@ export default function AnalysisDigitalProduct({ auth, reportData = [], currentS
                             <p className="text-gray-500 mt-1 text-sm">Unggah file excel untuk dimasukkan ke tabel sementara.</p>
                             <form onSubmit={submitCompleteFile} className="mt-4 space-y-4">
                                 <div>
-                                    <input type="file" name="complete_document" className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-green-50 file:text-green-700 hover:file:bg-green-100" onChange={(e) => setCompleteData('complete_document', e.target.files[0])} disabled={completeProcessing} />
+                                    <input type="file" name="complete_document" className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-green-50 file:text-green-700 hover:file:bg-green-100" onChange={(e) => setCompleteDataForm('complete_document', e.target.files[0])} disabled={completeProcessing} />
                                     {completeErrors.complete_document && <p className="text-green-700 text-xs mt-1">{completeErrors.complete_document}</p>}
                                 </div>
                                 {progressStates.complete !== null && (<ProgressBar progress={progressStates.complete} text="Memproses file..." />)}
@@ -1214,7 +1303,7 @@ export default function AnalysisDigitalProduct({ auth, reportData = [], currentS
                             <p className="text-gray-500 mt-1 text-sm">Unggah file excel berisi order yang akan di-cancel.</p>
                             <form onSubmit={submitCancelFile} className="mt-4 space-y-4">
                                 <div>
-                                    <input type="file" name="cancel_document" className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-red-50 file:text-red-700 hover:file:bg-red-100" onChange={(e) => setCancelData('cancel_document', e.target.files[0])} disabled={cancelProcessing} />
+                                    <input type="file" name="cancel_document" className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-red-50 file:text-red-700 hover:file:bg-red-100" onChange={(e) => setCancelDataForm('cancel_document', e.target.files[0])} disabled={cancelProcessing} />
                                     {cancelErrors.cancel_document && <p className="text-red-500 text-xs mt-1">{cancelErrors.cancel_document}</p>}
                                 </div>
                                 {progressStates.cancel !== null && (<ProgressBar progress={progressStates.cancel} text="Memproses file..." />)}
