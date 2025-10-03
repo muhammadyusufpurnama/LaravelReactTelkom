@@ -2,32 +2,36 @@
 
 namespace App\Imports;
 
-use App\Models\CompletedOrder; // <-- Ganti model yang digunakan
+use App\Models\CompletedOrder;
+use Illuminate\Support\Collection;
 use Maatwebsite\Excel\Concerns\ToCollection;
 use Maatwebsite\Excel\Concerns\WithHeadingRow;
 use Illuminate\Support\Facades\Log;
 
 class CompletedOrdersImport implements ToCollection, WithHeadingRow
 {
-    public function collection($rows)
+    public function collection(Collection $rows)
     {
-        // Ambil semua order_id dari Excel, buang yang kosong
-        $orderIds = collect($rows)->pluck('order_id')->filter()->unique()->all();
+        // 1. Ambil semua 'order_id' dari file, buang yang kosong/null, dan ambil yang unik saja.
+        $orderIds = $rows->pluck('order_id')->filter()->unique();
 
-        if (empty($orderIds)) {
+        if ($orderIds->isEmpty()) {
             Log::warning('Tidak ada order_id yang valid ditemukan di file order complete.');
             return;
         }
 
-        // Siapkan data untuk dimasukkan ke tabel completed_orders
-        $dataToInsert = array_map(function ($orderId) {
-            return ['order_id' => $orderId];
-        }, $orderIds);
+        // 2. Ubah koleksi order_id menjadi format array yang siap untuk di-insert.
+        $dataToInsert = $orderIds->map(function ($orderId) {
+            return [
+                'order_id' => trim($orderId), // Tambahkan trim untuk kebersihan data
+                'created_at' => now(),
+                'updated_at' => now(),
+            ];
+        })->all();
 
-        // Gunakan upsert: memasukkan data baru, mengabaikan jika order_id sudah ada.
-        // Ini mencegah error jika file yang sama di-upload dua kali.
+        // 3. Gunakan 'upsert'. Masukkan data baru, abaikan jika 'order_id' sudah ada.
         CompletedOrder::upsert($dataToInsert, ['order_id']);
 
-        Log::info('Berhasil mengimpor ' . count($dataToInsert) . ' order_id ke tabel sementara.');
+        Log::info('Berhasil mengimpor ' . count($dataToInsert) . ' order_id unik ke tabel completed_orders.');
     }
 }

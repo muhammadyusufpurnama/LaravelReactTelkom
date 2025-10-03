@@ -12,65 +12,55 @@ class InProgressExport implements FromQuery, WithHeadings, WithMapping, ShouldAu
 {
     protected $segment;
     protected $year;
-    protected $rowNumber = 0;
+    protected $witel;
 
-    // Terima filter dari controller
-    public function __construct(string $segment, int $year)
+    public function __construct(string $segment, int $year, ?string $witel)
     {
         $this->segment = $segment;
         $this->year = $year;
+        $this->witel = $witel;
     }
 
-    /**
-     * Kueri ini mengambil data dari database.
-     * PASTIKAN kueri ini sama dengan yang ada di controller Anda untuk data 'In Progress'.
-     */
     public function query()
     {
         return DocumentData::query()
             ->where('status_wfm', 'in progress')
             ->where('segment', $this->segment)
             ->whereYear('order_created_date', $this->year)
-            ->select('milestone', 'segment', 'order_status_n', 'product as product_name', 'order_id', 'nama_witel', 'customer_name', 'order_created_date')
+            ->when($this->witel, function ($query) {
+                return $query->where('nama_witel', $this->witel);
+            })
+            // [FIX] Mengambil kolom 'witel_lama' bukan 'branch'
+            ->select('order_id', 'product as product_name', 'nama_witel', 'customer_name', 'milestone', 'order_created_date', 'segment', 'witel_lama')
             ->orderBy('order_created_date', 'desc');
     }
 
-    /**
-     * Menentukan header untuk kolom di file Excel.
-     */
     public function headings(): array
     {
         return [
-            'No.',
-            'Milestone',
-            'Segment',
-            'Status Order',
-            'Product Name',
             'Order ID',
-            'Witel',
+            'PRODUCT NAME',
+            'WITEL',
             'Customer Name',
-            'Order Created Date',
+            'Milestone',
+            'Order created date',
+            'Segment',
+            'Branch', // Header di Excel tetap 'Branch'
         ];
     }
 
-    /**
-     * Memetakan data dari setiap baris untuk ditampilkan di Excel.
-     * @param \App\Models\DocumentData $row
-     */
     public function map($row): array
     {
-        $this->rowNumber++;
         return [
-            $this->rowNumber,
-            $row->milestone,
-            $row->segment,
-            $row->order_status_n,
-            $row->product_name,
             $row->order_id,
+            $row->product_name,
             $row->nama_witel,
             $row->customer_name,
-            // Format tanggal agar mudah dibaca di Excel
-            \Carbon\Carbon::parse($row->order_created_date)->format('d-m-Y H:i:s'),
+            $row->milestone,
+            \Carbon\Carbon::parse($row->order_created_date)->format('Y/m/d H:i:s A'),
+            $row->segment,
+            // [FIX] Menggunakan data dari 'witel_lama' untuk kolom Branch
+            $row->witel_lama ?? 'N/A',
         ];
     }
 }

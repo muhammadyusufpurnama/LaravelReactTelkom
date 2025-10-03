@@ -546,8 +546,12 @@ const SmeReportTable = ({ data = [], decimalPlaces, tableConfig, setTableConfig 
 };
 
 const InProgressTable = ({ dataPaginator = { data: [], links: [], from: 0 } }) => {
-    const handleCompleteClick = (orderId) => { if (confirm(`Anda yakin ingin mengubah status Order ID: ${orderId} menjadi "Complete"?`)) { router.put(route('manual.update.complete', { order_id: orderId }), {}, { preserveScroll: true, onSuccess: () => router.reload({ preserveState: false }) }); } };
-    const handleCancelClick = (orderId) => { if (confirm(`Anda yakin ingin membatalkan Order ID: ${orderId}?`)) { router.put(route('manual.update.cancel', { order_id: orderId }), {}, { preserveScroll: true, onSuccess: () => router.reload({ preserveState: false }) }); } };
+    const handleCompleteClick = (orderId) => {
+        router.put(route('manual.update.complete', { order_id: orderId }), {}, { preserveScroll: true, onSuccess: () => router.reload({ preserveState: false }) });
+    };
+    const handleCancelClick = (orderId) => {
+        router.put(route('manual.update.cancel', { order_id: orderId }), {}, { preserveScroll: true, onSuccess: () => router.reload({ preserveState: false }) });
+    };
     return (
         <>
             <div className="overflow-x-auto text-sm">
@@ -581,8 +585,16 @@ const InProgressTable = ({ dataPaginator = { data: [], links: [], from: 0 } }) =
 };
 
 const CompleteTable = ({ dataPaginator = { data: [], links: [] } }) => {
-    const handleSetInProgress = (orderId) => { if (confirm(`Anda yakin ingin mengembalikan Order ID ${orderId} ke status "In Progress"?`)) { router.put(route('complete.update.progress', { order_id: orderId }), {}, { preserveScroll: true, onSuccess: () => router.reload({ preserveState: false }) }); } };
-    const handleSetCancel = (orderId) => { if (confirm(`Anda yakin ingin mengubah status Order ID ${orderId} menjadi "Cancel"?`)) { router.put(route('complete.update.cancel', { order_id: orderId }), {}, { preserveScroll: true, onSuccess: () => router.reload({ preserveState: false }) }); } };
+    const handleSetInProgress = (orderId) => { if (confirm(`Anda yakin ingin mengembalikan Order ID ${orderId} ke status "In Progress"?`)) { router.put(route('complete.update.progress', { documentData: orderId }), {}, { preserveScroll: true, onSuccess: () => router.reload({ preserveState: false }) }); } };
+    const handleSetCancel = (orderId) => { if (confirm(`Anda yakin ingin mengubah status Order ID ${orderId} menjadi "Cancel"?`)) { router.put(route('complete.update.cancel', { documentData: orderId }), {}, { preserveScroll: true, onSuccess: () => router.reload({ preserveState: false }) }); } };
+
+    // [TAMBAHKAN] Fungsi baru untuk mengirim order ke QC
+    const handleSetQc = (orderId) => {
+        if (confirm(`Anda yakin ingin mengirim Order ID ${orderId} kembali ke proses QC? Status WFM akan dikosongkan.`)) {
+            router.put(route('complete.update.qc', { documentData: orderId }), {}, { preserveScroll: true, onSuccess: () => router.reload({ preserveState: false }) });
+        }
+    };
+
     return (
         <>
             <div className="overflow-x-auto text-sm">
@@ -600,11 +612,58 @@ const CompleteTable = ({ dataPaginator = { data: [], links: [] } }) => {
                                 <td className="p-3 text-center">
                                     <div className="flex justify-center items-center gap-2">
                                         <button onClick={() => handleSetInProgress(item.order_id)} className="px-3 py-1 text-xs font-bold text-white bg-blue-500 rounded-md hover:bg-blue-600">Ke In Progress</button>
+
+                                        {/* [TAMBAHKAN] Tombol baru "Kirim ke QC" */}
+                                        <button onClick={() => handleSetQc(item.order_id)} className="px-3 py-1 text-xs font-bold text-white bg-yellow-500 rounded-md hover:bg-yellow-600">Kirim ke QC</button>
+
                                         <button onClick={() => handleSetCancel(item.order_id)} className="px-3 py-1 text-xs font-bold text-white bg-red-500 rounded-md hover:bg-red-600">Ke Cancel</button>
                                     </div>
                                 </td>
                             </tr>
                         )) : (<tr><td colSpan="8" className="p-4 text-center text-gray-500">Tidak ada data Complete saat ini.</td></tr>)}
+                    </tbody>
+                </table>
+            </div>
+            <Pagination links={dataPaginator.links} />
+        </>
+    );
+};
+
+// GANTI SELURUH KOMPONEN QcTable ANDA DENGAN INI
+const QcTable = ({ dataPaginator = { data: [], links: [], from: 0 } }) => {
+    // ... (fungsi-fungsi handler Anda biarkan sama)
+    const handleSetInProgress = (orderId) => { /* ... */ };
+    const handleSetDone = (orderId) => { /* ... */ };
+    const handleSetCancel = (orderId) => { /* ... */ };
+
+    return (
+        <>
+            <div className="overflow-x-auto text-sm">
+                <p className="text-gray-500 mb-2">Menampilkan data order yang sedang dalam proses Quality Control (QC).</p>
+                <table className="w-full">
+                    <thead className="bg-gray-50">
+                        {/* ... (kode thead Anda) ... */}
+                    </thead>
+                    <tbody className="divide-y bg-white">
+                        {dataPaginator.data.length > 0 ? dataPaginator.data.map((item, index) => (
+                            // [FIX] Tambahkan key={item.id} yang unik pada elemen <tr>
+                            <tr key={item.id} className="text-gray-700 hover:bg-gray-50">
+                                <td className="p-3">{dataPaginator.from + index}</td>
+                                <td className="p-3">{item.milestone}</td>
+                                <td className="p-3 font-mono">{item.order_id}</td>
+                                <td className="p-3">{item.product}</td>
+                                <td className="p-3">{item.nama_witel}</td>
+                                <td className="p-3">{item.customer_name}</td>
+                                <td className="p-3">{formatDate(item.updated_at)}</td>
+                                <td className="p-3 text-center">
+                                    <div className="flex justify-center items-center gap-2">
+                                        <button onClick={() => handleSetInProgress(item.order_id)} className="px-3 py-1 text-xs font-bold text-white bg-blue-500 rounded-md hover:bg-blue-600">In Progress</button>
+                                        <button onClick={() => handleSetDone(item.order_id)} className="px-3 py-1 text-xs font-bold text-white bg-green-500 rounded-md hover:bg-green-600">Done Bima</button>
+                                        <button onClick={() => handleSetCancel(item.order_id)} className="px-3 py-1 text-xs font-bold text-white bg-red-500 rounded-md hover:bg-red-600">Cancel</button>
+                                    </div>
+                                </td>
+                            </tr>
+                        )) : (<tr><td colSpan="8" className="p-4 text-center text-gray-500">Tidak ada data QC saat ini.</td></tr>)}
                     </tbody>
                 </table>
             </div>
@@ -654,60 +713,42 @@ const HistoryTable = ({ historyData = { data: [], links: [] } }) => { // <-- Men
     );
 };
 
-// GANTI SELURUH KOMPONEN QcTable ANDA DENGAN INI
-const QcTable = ({ dataPaginator = { data: [], links: [], from: 0 } }) => { // <-- Menerima objek paginator
-    const handleSetInProgress = (id) => { if (confirm(`Kembalikan Order ID ini ke "In Progress"?`)) { router.put(route('qc.update.progress', { order_id: id }), {}, { preserveScroll: true, onSuccess: () => router.reload({ preserveState: false }) }); } };
-    const handleSetDone = (id) => { if (confirm(`Ubah status Order ID ini menjadi "Done Close Bima"?`)) { router.put(route('qc.update.done', { order_id: id }), {}, { preserveScroll: true, onSuccess: () => router.reload({ preserveState: false }) }); } };
-    const handleSetCancel = (id) => { if (confirm(`Ubah status Order ID ini menjadi "Done Close Cancel"?`)) { router.put(route('qc.update.cancel', { order_id: id }), {}, { preserveScroll: true, onSuccess: () => router.reload({ preserveState: false }) }); } };
-
-    return (
-        <>
-            <div className="overflow-x-auto text-sm">
-                <p className="text-gray-500 mb-2">Menampilkan data order yang sedang dalam proses Quality Control (QC).</p>
-                <table className="w-full">
-                    <thead className="bg-gray-50">
-                        <tr className="text-left font-semibold text-gray-600">
-                            <th className="p-3">No.</th><th className="p-3">Milestone</th><th className="p-3">Order ID</th><th className="p-3">Product Name</th><th className="p-3">Witel</th><th className="p-3">Customer Name</th><th className="p-3">Update Time</th><th className="p-3 text-center">Aksi</th>
-                        </tr>
-                    </thead>
-                    <tbody className="divide-y bg-white">
-                        {/* Mengakses array .data dari paginator */}
-                        {dataPaginator.data.length > 0 ? dataPaginator.data.map((item, index) => (
-                            <tr key={item.id} className="text-gray-700 hover:bg-gray-50">
-                                <td className="p-3">{dataPaginator.from + index}</td><td className="p-3">{item.milestone}</td><td className="p-3 font-mono">{item.order_id}</td><td className="p-3">{item.product}</td><td className="p-3">{item.nama_witel}</td><td className="p-3">{item.customer_name}</td><td className="p-3">{formatDate(item.updated_at)}</td>
-                                <td className="p-3 text-center">
-                                    <div className="flex justify-center items-center gap-2">
-                                        <button onClick={() => handleSetInProgress(item.id)} className="px-3 py-1 text-xs font-bold text-white bg-blue-500 rounded-md hover:bg-blue-600">In Progress</button>
-                                        <button onClick={() => handleSetDone(item.id)} className="px-3 py-1 text-xs font-bold text-white bg-green-500 rounded-md hover:bg-green-600">Done Bima</button>
-                                        <button onClick={() => handleSetCancel(item.id)} className="px-3 py-1 text-xs font-bold text-white bg-red-500 rounded-md hover:bg-red-600">Cancel</button>
-                                    </div>
-                                </td>
-                            </tr>
-                        )) : (<tr><td colSpan="8" className="p-4 text-center text-gray-500">Tidak ada data QC saat ini.</td></tr>)}
-                    </tbody>
-                </table>
-            </div>
-            <Pagination links={dataPaginator.links} />
-        </>
-    );
-};
-
 const KpiTable = ({ data = [], accountOfficers = [], openModal }) => {
     return (
         <div className="overflow-x-auto text-sm">
             <table className="min-w-full divide-y divide-gray-200 border">
                 <thead className="bg-gray-50">
                     <tr>
-                        <th rowSpan="2" className="px-4 py-2 text-center text-xs font-medium text-white uppercase tracking-wider border bg-green-600">NAMA PO</th><th rowSpan="2" className="px-4 py-2 text-center text-xs font-medium text-white uppercase tracking-wider border bg-green-600">WITEL</th><th colSpan="2" className="px-4 py-2 text-center text-xs font-medium text-white uppercase tracking-wider border bg-orange-500">PRODIGI DONE</th><th colSpan="2" className="px-4 py-2 text-center text-xs font-medium text-white uppercase tracking-wider border bg-blue-500">PRODIGI OGP</th><th rowSpan="2" className="px-4 py-2 text-center text-xs font-medium text-white uppercase tracking-wider border bg-green-600">TOTAL</th><th colSpan="2" className="px-4 py-2 text-center text-xs font-medium text-white uppercase tracking-wider border bg-yellow-400">ACH</th><th rowSpan="2" className="px-4 py-2 text-center text-xs font-medium text-white uppercase tracking-wider border bg-gray-600">AKSI</th>
+                        <th rowSpan="2" className="px-4 py-2 text-center text-xs font-medium text-white uppercase tracking-wider border bg-green-600">NAMA PO</th>
+                        <th rowSpan="2" className="px-4 py-2 text-center text-xs font-medium text-white uppercase tracking-wider border bg-green-600">WITEL</th>
+                        <th colSpan="2" className="px-4 py-2 text-center text-xs font-medium text-white uppercase tracking-wider border bg-orange-500">PRODIGI DONE</th>
+                        <th colSpan="2" className="px-4 py-2 text-center text-xs font-medium text-white uppercase tracking-wider border bg-blue-500">PRODIGI OGP</th>
+                        <th rowSpan="2" className="px-4 py-2 text-center text-xs font-medium text-white uppercase tracking-wider border bg-green-600">TOTAL</th>
+                        <th colSpan="2" className="px-4 py-2 text-center text-xs font-medium text-white uppercase tracking-wider border bg-yellow-400">ACH</th>
+                        <th rowSpan="2" className="px-4 py-2 text-center text-xs font-medium text-white uppercase tracking-wider border bg-gray-600">AKSI</th>
                     </tr>
                     <tr>
-                        <th className="px-4 py-2 text-center text-xs font-medium text-white uppercase tracking-wider border bg-orange-400">NCX</th><th className="px-4 py-2 text-center text-xs font-medium text-white uppercase tracking-wider border bg-orange-400">SCONE</th><th className="px-4 py-2 text-center text-xs font-medium text-white uppercase tracking-wider border bg-blue-400">NCX</th><th className="px-4 py-2 text-center text-xs font-medium text-white uppercase tracking-wider border bg-blue-400">SCONE</th><th className="px-4 py-2 text-center text-xs font-medium text-white uppercase tracking-wider border bg-yellow-300">YTD</th><th className="px-4 py-2 text-center text-xs font-medium text-white uppercase tracking-wider border bg-yellow-300">Q3</th>
+                        <th className="px-4 py-2 text-center text-xs font-medium text-white uppercase tracking-wider border bg-orange-400">NCX</th>
+                        <th className="px-4 py-2 text-center text-xs font-medium text-white uppercase tracking-wider border bg-orange-400">SCONE</th>
+                        <th className="px-4 py-2 text-center text-xs font-medium text-white uppercase tracking-wider border bg-blue-400">NCX</th>
+                        <th className="px-4 py-2 text-center text-xs font-medium text-white uppercase tracking-wider border bg-blue-400">SCONE</th>
+                        <th className="px-4 py-2 text-center text-xs font-medium text-white uppercase tracking-wider border bg-yellow-300">YTD</th>
+                        <th className="px-4 py-2 text-center text-xs font-medium text-white uppercase tracking-wider border bg-yellow-300">Q3</th>
                     </tr>
                 </thead>
                 <tbody className="bg-white divide-y divide-gray-200">
-                    {data.map((po) => (
+                    {/* [FIX] Tambahkan .filter(Boolean) untuk membuang data null sebelum mapping */}
+                    {data.filter(Boolean).map((po) => (
                         <tr key={po.nama_po} className="hover:bg-gray-50">
-                            <td className="px-4 py-2 whitespace-nowrap border font-medium">{po.nama_po}</td><td className="px-4 py-2 whitespace-nowrap border">{po.witel}</td><td className="px-4 py-2 whitespace-nowrap border text-center">{po.done_ncx}</td><td className="px-4 py-2 whitespace-nowrap border text-center">{po.done_scone}</td><td className="px-4 py-2 whitespace-nowrap border text-center">{po.ogp_ncx}</td><td className="px-4 py-2 whitespace-nowrap border text-center">{po.ogp_scone}</td><td className="px-4 py-2 whitespace-nowrap border text-center font-bold">{po.total}</td><td className="px-4 py-2 whitespace-nowrap border text-center font-bold bg-yellow-200">{po.ach_ytd}</td><td className="px-4 py-2 whitespace-nowrap border text-center font-bold bg-yellow-200">{po.ach_q3}</td>
+                            <td className="px-4 py-2 whitespace-nowrap border font-medium">{po.nama_po}</td>
+                            <td className="px-4 py-2 whitespace-nowrap border">{po.witel}</td>
+                            <td className="px-4 py-2 whitespace-nowrap border text-center">{po.done_ncx}</td>
+                            <td className="px-4 py-2 whitespace-nowrap border text-center">{po.done_scone}</td>
+                            <td className="px-4 py-2 whitespace-nowrap border text-center">{po.ogp_ncx}</td>
+                            <td className="px-4 py-2 whitespace-nowrap border text-center">{po.ogp_scone}</td>
+                            <td className="px-4 py-2 whitespace-nowrap border text-center font-bold">{po.total}</td>
+                            <td className="px-4 py-2 whitespace-nowrap border text-center font-bold bg-yellow-200">{po.ach_ytd}</td>
+                            <td className="px-4 py-2 whitespace-nowrap border text-center font-bold bg-yellow-200">{po.ach_q3}</td>
                             <td className="px-4 py-2 whitespace-nowrap border">
                                 <button onClick={() => openModal(accountOfficers.find(a => a.id === po.id))} className="text-indigo-600 hover:text-indigo-900 text-xs font-semibold">Edit</button>
                             </td>
@@ -727,13 +768,24 @@ const KpiTable = ({ data = [], accountOfficers = [], openModal }) => {
 // Table Configurator Component
 // ===================================================================
 
+// ===================================================================
+// Table Configurator Component (KODE LENGKAP PENGGANTI)
+// ===================================================================
+
 const TableConfigurator = ({ tableConfig, setTableConfig }) => {
     const [isExpanded, setIsExpanded] = useState(false);
     const [formState, setFormState] = useState({
-        mode: 'sub-column', groupTitle: tableConfig[0]?.groupTitle || '', columnTitle: '', columnType: 'calculation', operation: 'sum', operands: [], initialSubColumnTitle: 'Value',
+        mode: 'sub-column',
+        groupTitle: tableConfig[0]?.groupTitle || '',
+        columnTitle: '',
+        columnType: 'calculation',
+        operation: 'sum',
+        operands: [],
+        initialSubColumnTitle: 'Value',
     });
     const [editGroup, setEditGroup] = useState({
-        title: tableConfig[0]?.groupTitle || '', className: tableConfig[0]?.groupClass || '',
+        title: tableConfig[0]?.groupTitle || '',
+        className: tableConfig[0]?.groupClass || '',
     });
     const [columnToDelete, setColumnToDelete] = useState('');
 
@@ -742,8 +794,9 @@ const TableConfigurator = ({ tableConfig, setTableConfig }) => {
         tableConfig.forEach(group => {
             group.columns.forEach(col => {
                 const processColumn = (c, parentKey = '', parentTitle = '') => {
-                    if (c.subColumns) { c.subColumns.forEach(sc => processColumn(sc, col.key, col.title)); }
-                    else if (c.type !== 'calculation') {
+                    if (c.subColumns) {
+                        c.subColumns.forEach(sc => processColumn(sc, col.key, col.title));
+                    } else if (c.type !== 'calculation') {
                         const key = parentKey ? parentKey + c.key : c.key;
                         const label = parentTitle ? `${group.groupTitle} > ${parentTitle} > ${c.title}` : `${group.groupTitle} > ${c.title}`;
                         columns.push({ label, value: key });
@@ -773,13 +826,21 @@ const TableConfigurator = ({ tableConfig, setTableConfig }) => {
 
     useEffect(() => {
         const currentGroupExists = tableConfig.some(g => g.groupTitle === editGroup.title);
-        if (!currentGroupExists && tableConfig.length > 0) { setEditGroup({ title: tableConfig[0].groupTitle, className: tableConfig[0].groupClass }); }
+        if (!currentGroupExists && tableConfig.length > 0) {
+            setEditGroup({ title: tableConfig[0].groupTitle, className: tableConfig[0].groupClass || '' });
+        }
         const currentFormGroupExists = tableConfig.some(g => g.groupTitle === formState.groupTitle);
-        if (!currentFormGroupExists && tableConfig.length > 0) { setFormState(prev => ({ ...prev, groupTitle: tableConfig[0].groupTitle })); }
+        if (!currentFormGroupExists && tableConfig.length > 0) {
+            setFormState(prev => ({ ...prev, groupTitle: tableConfig[0].groupTitle }));
+        }
         if (deletableColumns.length > 0) {
             const selectionExists = deletableColumns.some(c => c.value === columnToDelete);
-            if (!selectionExists) { setColumnToDelete(deletableColumns[0].value); }
-        } else { setColumnToDelete(''); }
+            if (!selectionExists) {
+                setColumnToDelete(deletableColumns[0].value);
+            }
+        } else {
+            setColumnToDelete('');
+        }
     }, [tableConfig, deletableColumns, columnToDelete, editGroup.title, formState.groupTitle]);
 
     const handleResetConfig = () => {
@@ -790,7 +851,10 @@ const TableConfigurator = ({ tableConfig, setTableConfig }) => {
     };
 
     const handleDeleteColumn = () => {
-        if (!columnToDelete) { alert("Silakan pilih kolom yang akan dihapus."); return; }
+        if (!columnToDelete) {
+            alert("Silakan pilih kolom yang akan dihapus.");
+            return;
+        }
         const selectedColumnLabel = deletableColumns.find(c => c.value === columnToDelete)?.label;
         if (confirm(`Anda yakin ingin menghapus kolom "${selectedColumnLabel}"? Aksi ini tidak dapat dibatalkan.`)) {
             const [groupTitle, colKey, subColKey] = columnToDelete.split('.');
@@ -801,13 +865,20 @@ const TableConfigurator = ({ tableConfig, setTableConfig }) => {
                     const targetCol = targetGroup.columns.find(c => c.key === colKey);
                     if (targetCol && targetCol.subColumns) {
                         targetCol.subColumns = targetCol.subColumns.filter(sc => sc.key !== subColKey);
-                        if (targetCol.subColumns.length === 0) { targetGroup.columns = targetGroup.columns.filter(c => c.key !== colKey); }
+                        if (targetCol.subColumns.length === 0) {
+                            targetGroup.columns = targetGroup.columns.filter(c => c.key !== colKey);
+                        }
                     }
-                } else { targetGroup.columns = targetGroup.columns.filter(c => c.key !== colKey); }
+                } else {
+                    targetGroup.columns = targetGroup.columns.filter(c => c.key !== colKey);
+                }
+
                 if (targetGroup.columns.length === 0) {
                     const finalConfig = newConfig.filter(g => g.groupTitle !== groupTitle);
                     setTableConfig(finalConfig);
-                } else { setTableConfig(newConfig); }
+                } else {
+                    setTableConfig(newConfig);
+                }
                 alert("Kolom berhasil dihapus.");
             }
         }
@@ -815,9 +886,13 @@ const TableConfigurator = ({ tableConfig, setTableConfig }) => {
 
     const handleInputChange = (e) => {
         const { name, value, type } = e.target;
-        if (type === 'radio' && name === 'mode') { setFormState(prev => ({ ...prev, mode: value, columnTitle: '', operands: [], columnType: 'calculation' })); }
-        else { setFormState(prev => ({ ...prev, [name]: value })); }
+        if (type === 'radio' && name === 'mode') {
+            setFormState(prev => ({ ...prev, mode: value, columnTitle: '', operands: [], columnType: 'calculation' }));
+        } else {
+            setFormState(prev => ({ ...prev, [name]: value }));
+        }
     };
+
     const handleOperandChange = (index, value) => {
         setFormState(prev => {
             const newOperands = [...(prev.operands || [])];
@@ -825,19 +900,31 @@ const TableConfigurator = ({ tableConfig, setTableConfig }) => {
             return { ...prev, operands: newOperands };
         });
     };
+
     const handleCheckboxOperandChange = (checked, value) => {
         setFormState(prev => {
             const currentOperands = prev.operands || [];
-            if (checked) { return { ...prev, operands: [...currentOperands, value] }; }
-            else { return { ...prev, operands: currentOperands.filter(op => op !== value) }; }
+            if (checked) {
+                return { ...prev, operands: [...currentOperands, value] };
+            } else {
+                return { ...prev, operands: currentOperands.filter(op => op !== value) };
+            }
         });
     };
+
     const handleSubmit = (e) => {
         e.preventDefault();
         if (formState.mode === 'group-column') {
             const newGroupObject = {
-                groupTitle: formState.columnTitle, groupClass: 'bg-purple-600',
-                columns: [{ key: `_${formState.initialSubColumnTitle.toLowerCase().replace(/\s+/g, '_')}`, title: formState.initialSubColumnTitle, type: 'data' }],
+                groupTitle: formState.columnTitle,
+                groupClass: 'bg-purple-600',
+                columnClass: 'bg-purple-500', // Warna turunan default
+                subColumnClass: 'bg-purple-400', // Warna turunan default
+                columns: [{
+                    key: `_${formState.initialSubColumnTitle.toLowerCase().replace(/\s+/g, '_')}`,
+                    title: formState.initialSubColumnTitle,
+                    type: 'data'
+                }],
             };
             setTableConfig(prev => [...prev, newGroupObject]);
             alert(`Grup kolom "${formState.columnTitle}" berhasil ditambahkan.`);
@@ -846,13 +933,19 @@ const TableConfigurator = ({ tableConfig, setTableConfig }) => {
             const newConfig = JSON.parse(JSON.stringify(tableConfig));
             const targetGroup = newConfig.find(g => g.groupTitle === formState.groupTitle);
             if (targetGroup) {
-                let newColumnDef = { key: newColumnKey, title: formState.columnTitle, type: formState.columnType };
+                let newColumnDef = {
+                    key: newColumnKey,
+                    title: formState.columnTitle,
+                    type: formState.columnType
+                };
                 if (formState.columnType === 'calculation') {
                     if (formState.operation === 'percentage' && (formState.operands.length < 2 || !formState.operands[0] || !formState.operands[1])) {
-                        alert('Untuk Persentase, harap pilih kolom Pembilang dan Penyebut.'); return;
+                        alert('Untuk Persentase, harap pilih kolom Pembilang dan Penyebut.');
+                        return;
                     }
                     if (['sum', 'average', 'count'].includes(formState.operation) && formState.operands.length === 0) {
-                        alert(`Untuk operasi ${formState.operation.toUpperCase()}, harap pilih minimal satu kolom.`); return;
+                        alert(`Untuk operasi ${formState.operation.toUpperCase()}, harap pilih minimal satu kolom.`);
+                        return;
                     }
                     newColumnDef.calculation = { operation: formState.operation, operands: formState.operands };
                 }
@@ -862,22 +955,64 @@ const TableConfigurator = ({ tableConfig, setTableConfig }) => {
             }
         }
     };
+
     const handleSelectGroupToEdit = (e) => {
         const selectedTitle = e.target.value;
         const groupToEdit = tableConfig.find(g => g.groupTitle === selectedTitle);
-        if (groupToEdit) { setEditGroup({ title: groupToEdit.groupTitle, className: groupToEdit.groupClass }); }
+        if (groupToEdit) {
+            setEditGroup({ title: groupToEdit.groupTitle, className: groupToEdit.groupClass || '' });
+        }
     };
+
+    /**
+     * Menyesuaikan tingkat kecerahan dari kelas warna Tailwind.
+     * @param {string} className - Kelas CSS input, e.g., 'bg-blue-600'.
+     * @param {number} amount - Jumlah yang akan ditambah/dikurangi, e.g., -100.
+     * @returns {string} Kelas CSS baru atau kelas asli jika tidak valid.
+     */
+    const adjustTailwindColor = (className, amount) => {
+        if (typeof className !== 'string') return className;
+
+        const match = className.match(/(bg|text|border)-(\w+)-(\d{2,3})/);
+        if (match) {
+            const [, prefix, color, brightnessStr] = match;
+            const brightness = parseInt(brightnessStr, 10);
+            let newBrightness = brightness + amount;
+
+            // Pastikan nilai tetap dalam rentang valid Tailwind (50-950)
+            newBrightness = Math.max(50, Math.min(950, newBrightness));
+
+            return `${prefix}-${color}-${newBrightness}`;
+        }
+        return className; // Kembalikan kelas asli jika format tidak cocok
+    };
+
     const handleSaveColor = () => {
+        const baseClass = editGroup.className;
+        const columnClass = adjustTailwindColor(baseClass, -100);
+        const subColumnClass = adjustTailwindColor(baseClass, -200);
+
         const newConfig = tableConfig.map(group => {
-            if (group.groupTitle === editGroup.title) { return { ...group, groupClass: editGroup.className }; }
+            if (group.groupTitle === editGroup.title) {
+                return {
+                    ...group,
+                    groupClass: baseClass,
+                    columnClass: columnClass,
+                    subColumnClass: subColumnClass
+                };
+            }
             return group;
         });
+
         setTableConfig(newConfig);
-        alert(`Warna untuk grup "${editGroup.title}" berhasil diubah.`);
+        alert(`Warna untuk grup "${editGroup.title}" dan turunannya berhasil diubah.`);
     };
+
     const renderOperandInputs = () => {
         switch (formState.operation) {
-            case 'sum': case 'average': case 'count':
+            case 'sum':
+            case 'average':
+            case 'count':
                 return (
                     <div>
                         <label className="block text-sm font-medium text-gray-700 mb-1">Pilih Kolom untuk Dihitung</label>
@@ -937,8 +1072,55 @@ const TableConfigurator = ({ tableConfig, setTableConfig }) => {
                                         </label>
                                     </div>
                                 </div>
-                                {formState.mode === 'group-column' && (<div className="p-4 border rounded-md space-y-4 bg-gray-50"> <h4 className="font-semibold text-md text-gray-800">Detail Grup Utama Baru</h4> <div> <label className="block text-sm font-medium text-gray-700">Nama Grup Utama Baru</label> <input type="text" name="columnTitle" value={formState.columnTitle} onChange={handleInputChange} className="mt-1 block w-full border-gray-300 rounded-md shadow-sm" required /> </div> <div> <label className="block text-sm font-medium text-gray-700">Nama Sub-Kolom Awal</label> <input type="text" name="initialSubColumnTitle" value={formState.initialSubColumnTitle} onChange={handleInputChange} className="mt-1 block w-full border-gray-300 rounded-md shadow-sm" required /> </div> </div>)}
-                                {formState.mode === 'sub-column' && (<div className="p-4 border rounded-md space-y-4 bg-gray-50"> <h4 className="font-semibold text-md text-gray-800">Detail Sub-Kolom Baru</h4> <div> <label className="block text-sm font-medium text-gray-700">Tambahkan ke Grup Induk</label> <select name="groupTitle" value={formState.groupTitle} onChange={handleInputChange} className="mt-1 block w-full border-gray-300 rounded-md shadow-sm"> {tableConfig.map(g => <option key={g.groupTitle} value={g.groupTitle}>{g.groupTitle}</option>)} </select> </div> <div> <label className="block text-sm font-medium text-gray-700">Nama Sub-Kolom Baru</label> <input type="text" name="columnTitle" value={formState.columnTitle} onChange={handleInputChange} className="mt-1 block w-full border-gray-300 rounded-md shadow-sm" required /> </div> <div> <label className="block text-sm font-medium text-gray-700 mb-2">Tipe Kolom:</label> <div className="flex gap-4"> <label className="flex items-center"><input type="radio" name="columnType" value="calculation" checked={formState.columnType === 'calculation'} onChange={handleInputChange} className="mr-2" /> Kalkulasi</label> <label className="flex items-center"><input type="radio" name="columnType" value="data" checked={formState.columnType === 'data'} onChange={handleInputChange} className="mr-2" /> Data Biasa (dari backend)</label> </div> </div> {formState.columnType === 'calculation' && (<div className="pt-4 border-t space-y-4"> <div> <label className="block text-sm font-medium text-gray-700">Operasi Kalkulasi</label> <select name="operation" value={formState.operation} onChange={handleInputChange} className="mt-1 block w-full border-gray-300 rounded-md shadow-sm"> <option value="sum">SUM (Jumlahkan)</option> <option value="percentage">PERCENTAGE (Persentase)</option> <option value="average">AVERAGE (Rata-rata)</option> <option value="count">COUNT (Hitung Jumlah)</option> </select> </div> {renderOperandInputs()} </div>)} </div>)}
+                                {formState.mode === 'group-column' && (
+                                    <div className="p-4 border rounded-md space-y-4 bg-gray-50">
+                                        <h4 className="font-semibold text-md text-gray-800">Detail Grup Utama Baru</h4>
+                                        <div>
+                                            <label className="block text-sm font-medium text-gray-700">Nama Grup Utama Baru</label>
+                                            <input type="text" name="columnTitle" value={formState.columnTitle} onChange={handleInputChange} className="mt-1 block w-full border-gray-300 rounded-md shadow-sm" required />
+                                        </div>
+                                        <div>
+                                            <label className="block text-sm font-medium text-gray-700">Nama Sub-Kolom Awal</label>
+                                            <input type="text" name="initialSubColumnTitle" value={formState.initialSubColumnTitle} onChange={handleInputChange} className="mt-1 block w-full border-gray-300 rounded-md shadow-sm" required />
+                                        </div>
+                                    </div>
+                                )}
+                                {formState.mode === 'sub-column' && (
+                                    <div className="p-4 border rounded-md space-y-4 bg-gray-50">
+                                        <h4 className="font-semibold text-md text-gray-800">Detail Sub-Kolom Baru</h4>
+                                        <div>
+                                            <label className="block text-sm font-medium text-gray-700">Tambahkan ke Grup Induk</label>
+                                            <select name="groupTitle" value={formState.groupTitle} onChange={handleInputChange} className="mt-1 block w-full border-gray-300 rounded-md shadow-sm">
+                                                {tableConfig.map(g => <option key={g.groupTitle} value={g.groupTitle}>{g.groupTitle}</option>)}
+                                            </select>
+                                        </div>
+                                        <div>
+                                            <label className="block text-sm font-medium text-gray-700">Nama Sub-Kolom Baru</label>
+                                            <input type="text" name="columnTitle" value={formState.columnTitle} onChange={handleInputChange} className="mt-1 block w-full border-gray-300 rounded-md shadow-sm" required />
+                                        </div>
+                                        <div>
+                                            <label className="block text-sm font-medium text-gray-700 mb-2">Tipe Kolom:</label>
+                                            <div className="flex gap-4">
+                                                <label className="flex items-center"><input type="radio" name="columnType" value="calculation" checked={formState.columnType === 'calculation'} onChange={handleInputChange} className="mr-2" /> Kalkulasi</label>
+                                                <label className="flex items-center"><input type="radio" name="columnType" value="data" checked={formState.columnType === 'data'} onChange={handleInputChange} className="mr-2" /> Data Biasa (dari backend)</label>
+                                            </div>
+                                        </div>
+                                        {formState.columnType === 'calculation' && (
+                                            <div className="pt-4 border-t space-y-4">
+                                                <div>
+                                                    <label className="block text-sm font-medium text-gray-700">Operasi Kalkulasi</label>
+                                                    <select name="operation" value={formState.operation} onChange={handleInputChange} className="mt-1 block w-full border-gray-300 rounded-md shadow-sm">
+                                                        <option value="sum">SUM (Jumlahkan)</option>
+                                                        <option value="percentage">PERCENTAGE (Persentase)</option>
+                                                        <option value="average">AVERAGE (Rata-rata)</option>
+                                                        <option value="count">COUNT (Hitung Jumlah)</option>
+                                                    </select>
+                                                </div>
+                                                {renderOperandInputs()}
+                                            </div>
+                                        )}
+                                    </div>
+                                )}
                                 <div className="text-right pt-4">
                                     <PrimaryButton type="submit">{formState.mode === 'sub-column' ? 'Tambah Sub-Kolom' : 'Tambah Grup Kolom'}</PrimaryButton>
                                 </div>
@@ -960,8 +1142,11 @@ const TableConfigurator = ({ tableConfig, setTableConfig }) => {
                                         </select>
                                     </div>
                                     <div>
-                                        <label className="block text-sm font-medium text-gray-700">Kelas Warna Tailwind CSS</label>
+                                        <label className="block text-sm font-medium text-gray-700">Kelas Warna Dasar Tailwind CSS</label>
                                         <input type="text" value={editGroup.className} onChange={e => setEditGroup({ ...editGroup, className: e.target.value })} className="mt-1 block w-full border-gray-300 rounded-md shadow-sm" placeholder="Contoh: bg-red-600" />
+                                        <p className="mt-1 text-xs text-gray-500">
+                                            Warna sub-kolom akan diatur ke kecerahan -100 & -200 secara otomatis.
+                                        </p>
                                     </div>
                                     <div className="text-right">
                                         <PrimaryButton type="button" onClick={handleSaveColor} className="w-full justify-center">Terapkan Warna</PrimaryButton>
@@ -1015,6 +1200,58 @@ export default function AnalysisDigitalProduct({
     const [activeDetailView, setActiveDetailView] = useState('inprogress');
     const [search, setSearch] = useState(filters.search || '');
     const [decimalPlaces, setDecimalPlaces] = useState(2);
+    const [selectedWitel, setSelectedWitel] = useState(filters.witel || '');
+
+    const witelList = ['BALI', 'JATIM BARAT', 'JATIM TIMUR', 'NUSA TENGGARA', 'SURAMADU'];
+
+    const handleExportReport = () => {
+        // 1. Buat elemen form secara dinamis
+        const form = document.createElement('form');
+        form.method = 'POST';
+        form.action = route('analysisDigitalProduct.export.report');
+        form.style.display = 'none'; // Sembunyikan form
+
+        // 2. Buat input untuk CSRF token
+        const csrfToken = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
+        const csrfInput = document.createElement('input');
+        csrfInput.type = 'hidden';
+        csrfInput.name = '_token';
+        csrfInput.value = csrfToken;
+        form.appendChild(csrfInput);
+
+        // 3. Buat input untuk filter (segment & period)
+        const segmentInput = document.createElement('input');
+        segmentInput.type = 'hidden';
+        segmentInput.name = 'segment';
+        segmentInput.value = currentSegment;
+        form.appendChild(segmentInput);
+
+        const periodInput = document.createElement('input');
+        periodInput.type = 'hidden';
+        periodInput.name = 'period';
+        periodInput.value = period;
+        form.appendChild(periodInput);
+
+        // 4. Buat input untuk data Details (Total, OGP, Closed)
+        const detailsInput = document.createElement('input');
+        detailsInput.type = 'hidden';
+        detailsInput.name = 'details';
+        // Ambil data dari 'detailsTotals' yang sudah Anda hitung
+        detailsInput.value = JSON.stringify(detailsTotals);
+        form.appendChild(detailsInput);
+
+        // 4.5 Buat input untuk konfigurasi tabel (kode ini sudah ada)
+        const configInput = document.createElement('input');
+        configInput.type = 'hidden';
+        configInput.name = 'table_config';
+        configInput.value = JSON.stringify(tableConfig); // Ubah state tableConfig menjadi string JSON
+        form.appendChild(configInput);
+
+        // 5. Tambahkan form ke body, submit, lalu hapus
+        document.body.appendChild(form);
+        form.submit();
+        document.body.removeChild(form);
+    };
 
     const [tableConfig, setTableConfig] = useState(() => {
         try {
@@ -1094,8 +1331,39 @@ export default function AnalysisDigitalProduct({
     const { data: completeDataForm, setData: setCompleteDataForm, post: postComplete, processing: completeProcessing, errors: completeErrors, reset: completeReset } = useForm({ complete_document: null });
     const { data: cancelDataForm, setData: setCancelDataForm, post: postCancel, processing: cancelProcessing, errors: cancelErrors, reset: cancelReset } = useForm({ cancel_document: null });
 
-    const submitCompleteFile = (e) => { e.preventDefault(); postComplete(route('analysisDigitalProduct.uploadComplete'), { forceFormData: true, onSuccess: () => completeReset() }); };
-    const handleSyncClick = () => { if (confirm('Anda yakin ingin menjalankan proses sinkronisasi untuk mengubah status order menjadi complete?')) { router.post(route('analysisDigitalProduct.syncComplete'), {}, { preserveScroll: true }); } };
+    const submitCompleteFile = (e) => {
+        e.preventDefault();
+        postComplete(route('analysisDigitalProduct.uploadComplete'), {
+            // forceFormData: true, // Opsi ini biasanya tidak perlu karena Inertia otomatis mendeteksi file
+            onSuccess: () => {
+                toast.success('File berhasil diunggah! Proses impor berjalan di latar belakang.');
+                completeReset('complete_document'); // Reset field input file saja
+            },
+            onError: () => {
+                toast.error('Gagal mengunggah file. Pastikan format sudah benar.');
+            }
+        });
+    };
+
+    const handleSyncCompleteClick = () => { // <-- NAMA DIGANTI
+        if (confirm('Anda yakin ingin menjalankan sinkronisasi data order complete?')) {
+            router.post(route('analysisDigitalProduct.syncCompletedOrders'), {}, {
+                preserveScroll: true,
+                onStart: () => toast.loading('Memulai sinkronisasi complete...'),
+                onSuccess: (page) => {
+                    toast.dismiss();
+                    const { success, error, info } = page.props.flash;
+                    if (success) toast.success(success);
+                    if (error) toast.error(error);
+                    if (info) toast.info(info);
+                },
+                onError: () => {
+                    toast.dismiss();
+                    toast.error('Terjadi kesalahan saat menghubungi server.');
+                }
+            });
+        }
+    };
     const submitCancelFile = (e) => { e.preventDefault(); postCancel(route('analysisDigitalProduct.uploadCancel'), { forceFormData: true, onSuccess: () => cancelReset() }); };
     const handleSyncCancelClick = () => { if (confirm('Anda yakin ingin menjalankan proses sinkronisasi untuk mengubah status order menjadi CANCEL?')) { router.post(route('analysisDigitalProduct.syncCancel'), {}, { preserveScroll: true }); } };
 
@@ -1113,8 +1381,16 @@ export default function AnalysisDigitalProduct({
             segment: currentSegment,
             period: period,
             in_progress_year: currentInProgressYear,
+            witel: selectedWitel, // Sertakan witel saat ini
             ...newFilters
         };
+
+        Object.keys(query).forEach(key => {
+            if (query[key] === '' || query[key] === null || query[key] === undefined) {
+                delete query[key];
+            }
+        });
+
         router.get(route('analysisDigitalProduct.index'), query, {
             preserveState: true,
             preserveScroll: true,
@@ -1129,8 +1405,30 @@ export default function AnalysisDigitalProduct({
 
     function handleSegmentChange(e) { handleFilterChange({ segment: e.target.value, page: 1 }); }
     function handlePeriodChange(e) { handleFilterChange({ period: e.target.value, page: 1 }); }
-    function handleInProgressYearChange(e) { handleFilterChange({ in_progress_year: e.target.value, page: 1 }); }
-    function handleUploadSubmit(e) { e.preventDefault(); postUpload(route('analysisDigitalProduct.upload')); }
+    function handleInProgressYearChange(e) {
+        handleFilterChange({ in_progress_year: e.target.value, page: 1 });
+    }
+
+    function handleUploadSubmit(e) {
+        e.preventDefault();
+        postUpload(route('analysisDigitalProduct.upload'));
+    }
+
+    const exportUrl = useMemo(() => {
+        const params = new URLSearchParams({
+            segment: currentSegment,
+            in_progress_year: currentInProgressYear,
+        });
+        if (selectedWitel) {
+            params.append('witel', selectedWitel);
+        }
+        return `${route('analysisDigitalProduct.export.inprogress')}?${params.toString()}`;
+    }, [currentSegment, currentInProgressYear, selectedWitel]);
+    function handleWitelChange(e) {
+        const newWitel = e.target.value;
+        setSelectedWitel(newWitel); // Menggunakan setter yang benar
+        handleFilterChange({ witel: newWitel, page: 1 });
+    }
 
     const detailsTotals = useMemo(() => {
         if (!reportData || reportData.length === 0) return { ogp: 0, closed: 0, total: 0 };
@@ -1178,6 +1476,14 @@ export default function AnalysisDigitalProduct({
         <button onClick={() => setView(viewName)} className={`px-4 py-2 text-sm font-semibold rounded-md transition-colors ${currentView === viewName ? 'bg-blue-600 text-white shadow' : 'bg-white text-gray-600 hover:bg-gray-100'}`}>{children}</button>
     );
 
+    const handleClearHistory = () => {
+        if (confirm('Anda yakin ingin menghapus seluruh data histori? Aksi ini tidak dapat dibatalkan.')) {
+            router.post(route('analysisDigitalProduct.clearHistory'), {}, {
+                preserveScroll: true,
+            });
+        }
+    };
+
     return (
         <AuthenticatedLayout auth={auth} header="Analysis Digital Product">
             <Head title="Analysis Digital Product" />
@@ -1195,6 +1501,12 @@ export default function AnalysisDigitalProduct({
                         <div className="flex flex-wrap justify-between items-center mb-4 gap-4">
                             <h3 className="font-semibold text-lg text-gray-800">Data Report</h3>
                             <div className="flex items-center gap-4">
+                                <button
+                                    onClick={handleExportReport}
+                                    className="px-4 py-2 text-sm font-bold text-white bg-green-600 rounded-md hover:bg-green-700 whitespace-nowrap"
+                                >
+                                    Ekspor Excel
+                                </button>
                                 <div className="flex items-center gap-2">
                                     <label htmlFor="decimal_places" className="text-sm font-medium text-gray-600">Desimal:</label>
                                     <input id="decimal_places" type="number" min="0" max="10" value={decimalPlaces} onChange={e => setDecimalPlaces(Number(e.target.value))} className="border border-gray-300 rounded-md text-sm p-2 w-20" />
@@ -1236,15 +1548,55 @@ export default function AnalysisDigitalProduct({
                                 </div>
                             )}
                             {activeDetailView === 'inprogress' && (
-                                <div className="flex items-center gap-2">
+                                <div className="flex items-center gap-2 flex-wrap">
+                                    {/* Filter Witel BARU */}
+                                    <select
+                                        value={selectedWitel}
+                                        onChange={handleWitelChange}
+                                        className="border border-gray-300 rounded-md text-sm p-2"
+                                    >
+                                        <option value="">Semua Witel</option>
+                                        {witelList.map(w => <option key={w} value={w}>{w}</option>)}
+                                    </select>
+
+                                    {/* Filter Tahun yang sudah ada */}
                                     <select
                                         value={currentInProgressYear}
                                         onChange={handleInProgressYearChange}
                                         className="border border-gray-300 rounded-md text-sm p-2"
                                     >
-                                        {generateYearOptions()}
+                                        {/* Panggil fungsi generateYearOptions di sini jika ada */}
+                                        <option value="2025">2025</option>
+                                        <option value="2024">2024</option>
+                                        <option value="2023">2023</option>
                                     </select>
-                                    <a href={route('analysisDigitalProduct.export.inprogress', { segment: currentSegment, in_progress_year: currentInProgressYear })} className="px-3 py-2 text-sm font-bold text-white bg-green-600 rounded-md hover:bg-green-700">Export Excel</a>
+
+                                    {/* Tombol Export yang sudah dinamis */}
+                                    <a
+                                        href={exportUrl}
+                                        className="px-3 py-2 text-sm font-bold text-white bg-green-600 rounded-md hover:bg-green-700"
+                                    >
+                                        Export Excel
+                                    </a>
+                                </div>
+                            )}
+                            {activeDetailView === 'history' && (
+                                <div className="w-full md:w-auto flex items-center gap-2">
+                                    {/* Tombol Export Excel (menggunakan tag <a> untuk download) */}
+                                    <a
+                                        href={route('analysisDigitalProduct.export.history')}
+                                        className="w-full px-4 py-2 text-sm font-bold text-white bg-green-600 rounded-md hover:bg-green-700 focus:outline-none"
+                                    >
+                                        Export Excel
+                                    </a>
+
+                                    {/* Tombol Kosongkan History yang sudah ada */}
+                                    <button
+                                        onClick={handleClearHistory}
+                                        className="w-full px-4 py-2 text-sm font-bold text-white bg-red-600 rounded-md hover:bg-red-700 focus:outline-none"
+                                    >
+                                        Clear History
+                                    </button>
                                 </div>
                             )}
                         </div>
@@ -1267,7 +1619,7 @@ export default function AnalysisDigitalProduct({
                                 <input type="file" className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100" onChange={(e) => setUploadData('document', e.target.files[0])} disabled={processing} />
                                 {errors.document && <p className="text-red-500 text-xs mt-1">{errors.document}</p>}
                             </div>
-                            {progressStates.mentah !== null && (<ProgressBar progress={progressStates.mentah} text="Memproses file..." />)}
+                            {/* {progressStates.mentah !== null && (<ProgressBar progress={progressStates.mentah} text="Memproses file..." />)} */}
                             <div className="flex items-center gap-4">
                                 <button type="submit" disabled={processing} className="px-4 py-2 bg-blue-600 text-white font-semibold rounded-md hover:bg-blue-700 disabled:bg-blue-400">
                                     {processing ? 'Mengunggah...' : 'Unggah Dokumen'}
@@ -1279,22 +1631,32 @@ export default function AnalysisDigitalProduct({
                     <EditReportForm currentSegment={currentSegment} reportData={reportData} period={period} />
                     <CollapsibleCard title="Proses Order Complete" isExpanded={isCompleteSectionExpanded} onToggle={() => setIsCompleteSectionExpanded(!isCompleteSectionExpanded)}>
                         <div className="bg-gray-50 p-4 rounded-md">
-                            <h3 className="font-semibold text-lg text-gray-800">Unggah Order Complete</h3>
-                            <p className="text-gray-500 mt-1 text-sm">Unggah file excel untuk dimasukkan ke tabel sementara.</p>
+                            <h3 className="font-semibold text-lg text-gray-800">Unggah & Sinkronisasi Order Complete</h3>
+                            <p className="text-gray-500 mt-1 text-sm">
+                                Unggah file excel untuk langsung mengubah status order 'in progress' menjadi 'complete'.
+                            </p>
                             <form onSubmit={submitCompleteFile} className="mt-4 space-y-4">
                                 <div>
-                                    <input type="file" name="complete_document" className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-green-50 file:text-green-700 hover:file:bg-green-100" onChange={(e) => setCompleteDataForm('complete_document', e.target.files[0])} disabled={completeProcessing} />
-                                    {completeErrors.complete_document && <p className="text-green-700 text-xs mt-1">{completeErrors.complete_document}</p>}
+                                    <input
+                                        type="file"
+                                        name="complete_document"
+                                        className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-green-50 file:text-green-700 hover:file:bg-green-100"
+                                        onChange={(e) => setCompleteDataForm('complete_document', e.target.files[0])}
+                                        disabled={completeProcessing}
+                                    />
+                                    {completeErrors.complete_document && <p className="text-red-500 text-xs mt-1">{completeErrors.complete_document}</p>}
                                 </div>
-                                {progressStates.complete !== null && (<ProgressBar progress={progressStates.complete} text="Memproses file..." />)}
-                                <PrimaryButton type="submit" className="bg-green-600 hover:bg-green-700 focus:bg-green-700 active:bg-green-800" disabled={completeProcessing}>
+
+                                {/* Progress bar tidak lagi diperlukan karena prosesnya sekarang sinkron/langsung */}
+
+                                <PrimaryButton
+                                    type="submit"
+                                    className="bg-green-600 hover:bg-green-700 focus:bg-green-700 active:bg-green-800"
+                                    disabled={completeProcessing}
+                                >
                                     {completeProcessing ? 'Memproses...' : 'Proses File Complete'}
                                 </PrimaryButton>
                             </form>
-                        </div>
-                        <div className="bg-gray-50 p-4 rounded-md">
-                            <h3 className="font-semibold text-lg text-gray-800">Sinkronisasi Data</h3>
-                            <PrimaryButton onClick={handleSyncClick} className="mt-4 w-full justify-center bg-purple-600 hover:bg-purple-700">Jalankan Sinkronisasi Order Complete</PrimaryButton>
                         </div>
                     </CollapsibleCard>
                     <CollapsibleCard title="Proses Order Cancel" isExpanded={isCancelSectionExpanded} onToggle={() => setIsCancelSectionExpanded(!isCancelSectionExpanded)}>
@@ -1311,11 +1673,6 @@ export default function AnalysisDigitalProduct({
                                     {cancelProcessing ? 'Memproses...' : 'Proses File Cancel'}
                                 </PrimaryButton>
                             </form>
-                        </div>
-                        <div className="bg-gray-50 p-4 rounded-md">
-                            <h3 className="font-semibold text-lg text-gray-800">Sinkronisasi Data Cancel</h3>
-                            <p className="text-gray-500 mt-1 text-sm">Jalankan proses update status pada data "In Progress" menjadi "Cancel".</p>
-                            <PrimaryButton onClick={handleSyncCancelClick} className="mt-4 w-full justify-center bg-orange-600 hover:bg-orange-700">Jalankan Sinkronisasi Order Cancel</PrimaryButton>
                         </div>
                     </CollapsibleCard>
                 </div>

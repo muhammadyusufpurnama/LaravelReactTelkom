@@ -67,6 +67,9 @@ Route::middleware(['auth', 'verified'])->group(function () {
             Route::post('/sync-cancel', 'syncCanceledOrders')->name('syncCancel');
             Route::get('/export/inprogress', 'exportInProgress')->name('export.inprogress');
             Route::post('/config', 'saveTableConfig')->name('saveConfig');
+            Route::post('/clear-history', 'clearHistory')->name('clearHistory');
+            Route::get('/export/history', 'exportHistory')->name('export.history');
+            Route::post('/export-report', 'exportReport')->name('export.report');
         });
 
         // Account Officers (CRUD)
@@ -74,11 +77,16 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::put('/account-officers/{officer}', [AccountOfficerController::class, 'update'])->name('account-officers.update');
 
         // Manual & QC Update Actions
-        Route::put('/manual-update/complete/{order_id}', [AnalysisDigitalProductController::class, 'updateManualComplete'])->name('manual.update.complete');
-        Route::put('/manual-update/cancel/{order_id}', [AnalysisDigitalProductController::class, 'updateManualCancel'])->name('manual.update.cancel');
-        Route::put('/qc-update/{order_id}/progress', [AnalysisDigitalProductController::class, 'updateQcStatusToProgress'])->name('qc.update.progress');
-        Route::put('/qc-update/{order_id}/done', [AnalysisDigitalProductController::class, 'updateQcStatusToDone'])->name('qc.update.done');
-        Route::put('/qc-update/{order_id}/cancel', [AnalysisDigitalProductController::class, 'updateQcStatusToCancel'])->name('qc.update.cancel');
+        Route::put('/manual-update/complete/{documentData:order_id}', [AnalysisDigitalProductController::class, 'updateManualComplete'])->name('manual.update.complete');
+        Route::put('/manual-update/cancel/{documentData:order_id}', [AnalysisDigitalProductController::class, 'updateManualCancel'])->name('manual.update.cancel');
+
+        Route::put('/complete-update/progress/{documentData:order_id}', [AnalysisDigitalProductController::class, 'updateCompleteToProgress'])->name('complete.update.progress');
+        Route::put('/complete-update/qc/{documentData:order_id}', [AnalysisDigitalProductController::class, 'updateCompleteToQc'])->name('complete.update.qc');
+        Route::put('/complete-update/cancel/{documentData:order_id}', [AnalysisDigitalProductController::class, 'updateCompleteToCancel'])->name('complete.update.cancel');
+
+        Route::put('/qc-update/{documentData:order_id}/progress', [AnalysisDigitalProductController::class, 'updateQcStatusToProgress'])->name('qc.update.progress');
+        Route::put('/qc-update/{documentData:order_id}/done', [AnalysisDigitalProductController::class, 'updateQcStatusToDone'])->name('qc.update.done');
+        Route::put('/qc-update/{documentData:order_id}/cancel', [AnalysisDigitalProductController::class, 'updateQcStatusToCancel'])->name('qc.update.cancel');
     });
 
 
