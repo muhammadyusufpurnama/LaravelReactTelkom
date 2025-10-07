@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import * as React from 'react';
 import { Link } from '@inertiajs/react';
 import { MdDashboard, MdAssessment, MdKeyboardArrowDown } from 'react-icons/md';
 import { FiSettings, FiUser, FiLogOut, FiUsers, FiChevronLeft, FiChevronRight } from 'react-icons/fi';
@@ -37,10 +37,10 @@ const NavLink = ({ href, active, icon, isSidebarOpen, children }) => (
 
 // UserProfile beradaptasi dengan status sidebar
 const UserProfile = ({ user, isSidebarOpen }) => {
-    const [isProfileOpen, setIsProfileOpen] = useState(false);
-    const profileRef = useRef(null);
+    const [isProfileOpen, setIsProfileOpen] = React.useState(false);
+    const profileRef = React.useRef(null);
 
-    useEffect(() => {
+    React.useEffect(() => {
         function handleClickOutside(event) {
             if (profileRef.current && !profileRef.current.contains(event.target)) {
                 setIsProfileOpen(false);
@@ -85,13 +85,13 @@ const UserProfile = ({ user, isSidebarOpen }) => {
 
 // Komponen utama Sidebar menerima props dari layout
 export default function Sidebar({ user, isSidebarOpen, toggleSidebar }) {
-    const [isDashboardOpen, setIsDashboardOpen] = useState(false);
-    const [isReportsOpen, setIsReportsOpen] = useState(false);
+    const [isDashboardOpen, setIsDashboardOpen] = React.useState(false);
+    const [isReportsOpen, setIsReportsOpen] = React.useState(false);
     const isDashboardActive = route().current('dashboardDigitalProduct');
     const isReportsActive = route().current('analysisDigitalProduct.index') || route().current('galaksi.index');
 
     // Menutup dropdown jika sidebar ditutup
-    useEffect(() => {
+    React.useEffect(() => {
         if (!isSidebarOpen) {
             setIsDashboardOpen(false);
             setIsReportsOpen(false);

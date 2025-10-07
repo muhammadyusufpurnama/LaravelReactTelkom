@@ -911,8 +911,11 @@ const TableConfigurator = ({ tableConfig, setTableConfig, currentSegment }) => {
 
     const handleResetConfig = () => {
         if (confirm("Anda yakin ingin mengembalikan tampilan tabel ke pengaturan awal? Semua kolom tambahan, urutan, dan perubahan warna akan hilang.")) {
+            // Buat kunci dinamis berdasarkan segmen yang aktif
             const storageKey = `userTableConfig_${currentSegment}`;
+            // Hapus kunci yang benar dari localStorage
             localStorage.removeItem(storageKey);
+            // Muat ulang halaman
             window.location.reload();
         }
     };
@@ -1291,6 +1294,54 @@ const TableConfigurator = ({ tableConfig, setTableConfig, currentSegment }) => {
                                         </select>
                                     </div>
                                     <div>
+                                        <h5 className="font-semibold text-sm text-gray-700 pt-4 border-t">Edit Kolom</h5>
+                                        <div className="space-y-4 mt-4">
+                                            <div>
+                                                <label className="block text-sm font-medium text-gray-700">Pilih Kolom untuk Diedit</label>
+                                                <select value={columnToEdit} onChange={handleSelectColumnToEdit} className="mt-1 block w-full border-gray-300 rounded-md shadow-sm" disabled={allColumnsList.length === 0}>
+                                                    <option value="">-- Pilih Kolom --</option>
+                                                    {allColumnsList.map(col => <option key={col.value} value={col.value}>{col.label}</option>)}
+                                                </select>
+                                            </div>
+                                            {editFormState && (
+                                                <form onSubmit={handleSaveChanges} className="p-4 border rounded-md bg-gray-50 space-y-4">
+                                                    <div>
+                                                        <label className="block text-sm font-medium text-gray-700">Nama Kolom</label>
+                                                        <input
+                                                            type="text"
+                                                            value={editFormState.title}
+                                                            onChange={e => setEditFormState(prev => ({ ...prev, title: e.target.value }))}
+                                                            className="mt-1 block w-full border-gray-300 rounded-md shadow-sm"
+                                                            required
+                                                        />
+                                                    </div>
+                                                    {editFormState.type === 'calculation' && (
+                                                        <div className="pt-4 border-t space-y-4">
+                                                            <div>
+                                                                <label className="block text-sm font-medium text-gray-700">Operasi Kalkulasi</label>
+                                                                <select
+                                                                    name="operation"
+                                                                    value={editFormState.operation}
+                                                                    onChange={e => setEditFormState(prev => ({ ...prev, operation: e.target.value, operands: [] }))}
+                                                                    className="mt-1 block w-full border-gray-300 rounded-md shadow-sm"
+                                                                >
+                                                                    <option value="sum">SUM (Jumlahkan)</option>
+                                                                    <option value="percentage">PERCENTAGE (Persentase)</option>
+                                                                    <option value="average">AVERAGE (Rata-rata)</option>
+                                                                    <option value="count">COUNT (Hitung Jumlah)</option>
+                                                                </select>
+                                                            </div>
+                                                            {renderOperandInputs(editFormState, setEditFormState, availableColumns)}
+                                                        </div>
+                                                    )}
+                                                    <div className="text-right">
+                                                        <PrimaryButton type="submit">Simpan Perubahan</PrimaryButton>
+                                                    </div>
+                                                </form>
+                                            )}
+                                        </div>
+                                    </div>
+                                    <div>
                                         <label className="block text-sm font-medium text-gray-700">Kelas Warna Dasar Tailwind CSS</label>
                                         <input type="text" value={editGroup.className} onChange={e => setEditGroup({ ...editGroup, className: e.target.value })} className="mt-1 block w-full border-gray-300 rounded-md shadow-sm" placeholder="Contoh: bg-red-600" />
                                         <p className="mt-1 text-xs text-gray-500">
@@ -1299,54 +1350,6 @@ const TableConfigurator = ({ tableConfig, setTableConfig, currentSegment }) => {
                                     </div>
                                     <div className="text-right">
                                         <PrimaryButton type="button" onClick={handleSaveColor} className="w-full justify-center">Terapkan Warna</PrimaryButton>
-                                    </div>
-                                </div>
-                                <div>
-                                    <h5 className="font-semibold text-sm text-gray-700 pt-4 border-t">Edit Kolom</h5>
-                                    <div className="space-y-4 mt-4">
-                                        <div>
-                                            <label className="block text-sm font-medium text-gray-700">Pilih Kolom untuk Diedit</label>
-                                            <select value={columnToEdit} onChange={handleSelectColumnToEdit} className="mt-1 block w-full border-gray-300 rounded-md shadow-sm" disabled={allColumnsList.length === 0}>
-                                                <option value="">-- Pilih Kolom --</option>
-                                                {allColumnsList.map(col => <option key={col.value} value={col.value}>{col.label}</option>)}
-                                            </select>
-                                        </div>
-                                        {editFormState && (
-                                            <form onSubmit={handleSaveChanges} className="p-4 border rounded-md bg-gray-50 space-y-4">
-                                                <div>
-                                                    <label className="block text-sm font-medium text-gray-700">Nama Kolom</label>
-                                                    <input
-                                                        type="text"
-                                                        value={editFormState.title}
-                                                        onChange={e => setEditFormState(prev => ({ ...prev, title: e.target.value }))}
-                                                        className="mt-1 block w-full border-gray-300 rounded-md shadow-sm"
-                                                        required
-                                                    />
-                                                </div>
-                                                {editFormState.type === 'calculation' && (
-                                                    <div className="pt-4 border-t space-y-4">
-                                                        <div>
-                                                            <label className="block text-sm font-medium text-gray-700">Operasi Kalkulasi</label>
-                                                            <select
-                                                                name="operation"
-                                                                value={editFormState.operation}
-                                                                onChange={e => setEditFormState(prev => ({ ...prev, operation: e.target.value, operands: [] }))}
-                                                                className="mt-1 block w-full border-gray-300 rounded-md shadow-sm"
-                                                            >
-                                                                <option value="sum">SUM (Jumlahkan)</option>
-                                                                <option value="percentage">PERCENTAGE (Persentase)</option>
-                                                                <option value="average">AVERAGE (Rata-rata)</option>
-                                                                <option value="count">COUNT (Hitung Jumlah)</option>
-                                                            </select>
-                                                        </div>
-                                                        {renderOperandInputs(editFormState, setEditFormState, availableColumns)}
-                                                    </div>
-                                                )}
-                                                <div className="text-right">
-                                                    <PrimaryButton type="submit">Simpan Perubahan</PrimaryButton>
-                                                </div>
-                                            </form>
-                                        )}
                                     </div>
                                 </div>
                             </div>
@@ -1419,7 +1422,7 @@ const legsTableConfigTemplate = [
     { groupTitle: 'In Progress', groupClass: 'bg-blue-600', columnClass: 'bg-blue-400', columns: [{ key: 'in_progress_n', title: 'N' }, { key: 'in_progress_o', title: 'O' }, { key: 'in_progress_ae', title: 'AE' }, { key: 'in_progress_ps', title: 'PS' }] },
     { groupTitle: 'Prov Comp', groupClass: 'bg-orange-600', columnClass: 'bg-orange-400', columns: [{ key: 'prov_comp_n_realisasi', title: 'N' }, { key: 'prov_comp_o_realisasi', title: 'O' }, { key: 'prov_comp_ae_realisasi', title: 'AE' }, { key: 'prov_comp_ps_realisasi', title: 'PS' }] },
     { groupTitle: 'REVENUE (Rp Juta)', groupClass: 'bg-green-700', columnClass: 'bg-green-500', subColumnClass: 'bg-green-300', columns: [{ key: 'revenue_n', title: 'N', subColumns: [{ key: '_ach', title: 'ACH' }, { key: '_target', title: 'T' }] }, { key: 'revenue_o', title: 'O', subColumns: [{ key: '_ach', title: 'ACH' }, { key: '_target', title: 'T' }] }, { key: 'revenue_ae', title: 'AE', subColumns: [{ key: '_ach', title: 'ACH' }, { key: '_target', title: 'T' }] }, { key: 'revenue_ps', title: 'PS', subColumns: [{ key: '_ach', title: 'ACH' }, { key: '_target', title: 'T' }] }] },
-    { groupTitle: 'Grand Total', groupClass: 'bg-gray-600', columnClass: 'bg-gray-500', columns: [{ key: 'grand_total_realisasi_legs', title: 'Total', type: 'calculation', calculation: { operation: 'sum', operands: ['prov_comp_n_realisasi', 'prov_comp_o_realisasi', 'prov_comp_ae_realisasi', 'prov_comp_ps_realisasi'] } }] },
+    { groupTitle: 'Grand Total', groupClass: 'bg-purple-600', columnClass: 'bg-purple-500', columns: [{ key: 'grand_total_realisasi_legs', title: 'Total', type: 'calculation', calculation: { operation: 'sum', operands: ['prov_comp_n_realisasi', 'prov_comp_o_realisasi', 'prov_comp_ae_realisasi', 'prov_comp_ps_realisasi'] } }] },
 ];
 
 const CustomTargetForm = ({ tableConfig, witelList, initialData, period, segment }) => {
