@@ -1,16 +1,9 @@
+import ApplicationLogo from '@/Components/ApplicationLogo';
 import { Link } from '@inertiajs/react';
 
-const Logo = () => (
-    <div className="text-center">
-        <h1 className="text-4xl font-bold text-red-600 drop-shadow-md">
-            Telkom<span className="text-gray-800">Indonesia</span>
-        </h1>
-        <p className="mt-2 text-sm text-gray-700 font-medium">Digital Product & Service Analysis</p>
-    </div>
-);
-
-export default function Guest({ children }) {
+export default function GuestLayout({ children }) {
     return (
+<<<<<<< HEAD
         // [DIUBAH] Hapus 'flex' dan 'items-center' dari sini untuk mengontrol posisi secara manual
         <div className="relative min-h-screen pt-6 sm:pt-0 overflow-hidden">
             {/* Background Image & Overlay */}
@@ -34,8 +27,18 @@ export default function Guest({ children }) {
                     </div>
                     {children}
                 </div>
+=======
+        <div className="flex min-h-screen flex-col items-center bg-gray-100 pt-6 sm:justify-center sm:pt-0">
+            <div>
+                <Link href="/">
+                    <ApplicationLogo className="h-20 w-20 fill-current text-gray-500" />
+                </Link>
+            </div>
+
+            <div className="mt-6 w-full overflow-hidden bg-white px-6 py-4 shadow-md sm:max-w-md sm:rounded-lg">
+                {children}
+>>>>>>> parent of 4b36d59 (membuat galaksi tampilan user)
             </div>
         </div>
     );
 }
-
