@@ -15,7 +15,11 @@ use Maatwebsite\Excel\Facades\Excel;
 
 class ImportAndProcessDocument implements ShouldQueue
 {
-    use Dispatchable, InteractsWithQueue, Queueable, SerializesModels, Batchable;
+    use Dispatchable;
+    use InteractsWithQueue;
+    use Queueable;
+    use SerializesModels;
+    use Batchable;
 
     public $timeout = 1200; // 20 menit timeout
     protected $path;
@@ -30,13 +34,15 @@ class ImportAndProcessDocument implements ShouldQueue
         // Pastikan job ini memiliki akses ke batch ID
         if (!$this->batch()) {
             Log::error('Job ImportAndProcessDocument dijalankan tanpa batch.');
+
             return;
         }
 
-        Log::info("Batch [" . $this->batch()->id . "]: Job ImportAndProcessDocument DIMULAI.");
+        Log::info('Batch ['.$this->batch()->id.']: Job ImportAndProcessDocument DIMULAI.');
 
         if ($this->batch()->cancelled()) {
-            Log::warning("Batch [" . $this->batch()->id . "]: Proses dibatalkan sebelum import.");
+            Log::warning('Batch ['.$this->batch()->id.']: Proses dibatalkan sebelum import.');
+
             return;
         }
 
@@ -46,13 +52,12 @@ class ImportAndProcessDocument implements ShouldQueue
             Excel::import(new DocumentDataImport($this->batch()->id), $this->path);
 
             // Setelah import selesai, pastikan progres di set ke 100% sebagai penanda final.
-            Cache::put('import_progress_' . $this->batch()->id, 100, now()->addMinutes(30));
+            Cache::put('import_progress_'.$this->batch()->id, 100, now()->addMinutes(30));
 
             // Simpan ID batch terakhir yang sukses
             Cache::put('last_successful_batch_id', $this->batch()->id, now()->addHours(24));
 
-            Log::info("Batch [" . $this->batch()->id . "]: Job ImportAndProcessDocument SELESAI.");
-
+            Log::info('Batch ['.$this->batch()->id.']: Job ImportAndProcessDocument SELESAI.');
         } catch (\Throwable $e) {
             $this->fail($e); // Panggil method failed() jika terjadi error
         }
@@ -67,7 +72,7 @@ class ImportAndProcessDocument implements ShouldQueue
 
         // Set progress ke -1 untuk menandakan error di frontend (opsional)
         if ($this->batch()) {
-            Cache::put('import_progress_' . $this->batch()->id, -1, now()->addMinutes(30));
+            Cache::put('import_progress_'.$this->batch()->id, -1, now()->addMinutes(30));
         }
     }
 

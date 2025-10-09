@@ -4,13 +4,13 @@ namespace App\Imports;
 
 use App\Models\DocumentData;
 use App\Models\OrderProduct;
+use App\Models\UpdateLog;
 use App\Traits\CalculatesProductPrice;
 use Carbon\Carbon;
 // use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 use Maatwebsite\Excel\Concerns\OnEachRow;
-use Maatwebsite\Excel\Concerns\WithBatchInserts;
 use Maatwebsite\Excel\Concerns\WithChunkReading;
 use Maatwebsite\Excel\Concerns\WithEvents;
 use Maatwebsite\Excel\Concerns\WithHeadingRow;
@@ -58,7 +58,7 @@ class DocumentDataImport implements OnEachRow, WithChunkReading, WithEvents, Wit
                     $this->totalRows = $totalRows[$worksheetName] - 1; // Kurangi 1 untuk header
                     Log::info("Batch [{$this->batchId}]: Ditemukan total {$this->totalRows} baris untuk diproses.");
                     // [MODIFIKASI] Set progres awal ke 0
-                    Cache::put('import_progress_' . $this->batchId, 0, now()->addMinutes(30));
+                    Cache::put('import_progress_'.$this->batchId, 0, now()->addMinutes(30));
                 } else {
                     Log::warning("Batch [{$this->batchId}]: Tidak dapat menghitung total baris.");
                 }
@@ -67,22 +67,22 @@ class DocumentDataImport implements OnEachRow, WithChunkReading, WithEvents, Wit
 
             // [TAMBAHAN] Event AfterImport untuk memastikan progres selesai 100%
             AfterImport::class => function (AfterImport $event) {
-                Cache::put('import_progress_' . $this->batchId, 100, now()->addMinutes(30));
+                Cache::put('import_progress_'.$this->batchId, 100, now()->addMinutes(30));
                 Log::info("Batch [{$this->batchId}]: Import selesai, progres diatur ke 100%.");
-            }
+            },
         ];
     }
 
     public function onRow(Row $row)
     {
-        $this->processedRows++;
+        ++$this->processedRows;
 
         // [FIX UTAMA] Logika update progres dipindahkan ke sini
         // Update setiap 50 baris agar tidak membebani cache, tapi tetap responsif
         if ($this->processedRows % 50 === 0 && $this->totalRows > 0) {
             $percentage = round(($this->processedRows / $this->totalRows) * 100);
             $percentage = min($percentage, 100); // Pastikan tidak pernah lebih dari 100
-            Cache::put('import_progress_' . $this->batchId, $percentage, now()->addMinutes(30));
+            Cache::put('import_progress_'.$this->batchId, $percentage, now()->addMinutes(30));
         }
 
         $rowAsArray = $row->toArray();
@@ -92,17 +92,21 @@ class DocumentDataImport implements OnEachRow, WithChunkReading, WithEvents, Wit
         // ===================================================================
 
         $orderIdRaw = $rowAsArray['order_id'] ?? null;
-        if (empty($orderIdRaw)) return;
+        if (empty($orderIdRaw)) {
+            return;
+        }
         $orderId = is_string($orderIdRaw) && strtoupper(substr($orderIdRaw, 0, 2)) === 'SC' ? substr($orderIdRaw, 2) : $orderIdRaw;
-        if (empty($orderId)) return;
+        if (empty($orderId)) {
+            return;
+        }
 
         $productWithOrderId = trim($rowAsArray['product_order_id'] ?? '');
         $productValue = '';
         if (!empty($productWithOrderId)) {
-            if (str_ends_with($productWithOrderId, (string)$orderId)) {
-                $productValue = trim(substr($productWithOrderId, 0, -strlen((string)$orderId)));
+            if (str_ends_with($productWithOrderId, (string) $orderId)) {
+                $productValue = trim(substr($productWithOrderId, 0, -strlen((string) $orderId)));
             } else {
-                $productValue = trim(str_replace((string)$orderId, '', $productWithOrderId));
+                $productValue = trim(str_replace((string) $orderId, '', $productWithOrderId));
                 Log::warning("Batch [{$this->batchId}]: Format 'Product + Order Id' tidak terduga untuk Order ID {$orderId}.");
             }
         }
@@ -115,20 +119,26 @@ class DocumentDataImport implements OnEachRow, WithChunkReading, WithEvents, Wit
         if ($isPijarMahir) {
             if (str_contains($productValue, '-')) {
                 $products = explode('-', $productValue);
-                $validProducts = array_filter($products, fn($product) => stripos(trim($product), 'pijar') === false);
-                if (empty($validProducts)) return;
+                $validProducts = array_filter($products, fn ($product) => stripos(trim($product), 'pijar') === false);
+                if (empty($validProducts)) {
+                    return;
+                }
                 $productValue = implode('-', $validProducts);
             } else {
                 return;
             }
         }
-        if (in_array(strtolower($productValue), ['kidi'])) return;
+        if (in_array(strtolower($productValue), ['kidi'])) {
+            return;
+        }
 
         $milestoneValue = trim($rowAsArray['milestone'] ?? '');
         $segmenN = trim($rowAsArray['segmen_n'] ?? '');
         $segment = (in_array($segmenN, ['RBS', 'SME'])) ? 'SME' : 'LEGS';
         $witel = trim($rowAsArray['nama_witel'] ?? '');
-        if (stripos($witel, 'JATENG') !== false) return;
+        if (stripos($witel, 'JATENG') !== false) {
+            return;
+        }
 
         $existingRecord = DocumentData::where('order_id', $orderId)->first();
         $excelNetPrice = is_numeric($rowAsArray['net_price'] ?? null) ? (float) $rowAsArray['net_price'] : 0;
@@ -141,10 +151,17 @@ class DocumentDataImport implements OnEachRow, WithChunkReading, WithEvents, Wit
         }
 
         $parseDate = function ($date) {
-            if (empty($date)) return null;
-            if (is_numeric($date)) return Carbon::createFromTimestamp(($date - 25569) * 86400)->format('Y-m-d H:i:s');
-            try { return Carbon::parse($date)->format('Y-m-d H:i:s'); }
-            catch (\Exception $e) { return null; }
+            if (empty($date)) {
+                return null;
+            }
+            if (is_numeric($date)) {
+                return Carbon::createFromTimestamp(($date - 25569) * 86400)->format('Y-m-d H:i:s');
+            }
+            try {
+                return Carbon::parse($date)->format('Y-m-d H:i:s');
+            } catch (\Exception $e) {
+                return null;
+            }
         };
 
         $status_wfm = 'in progress';
@@ -153,6 +170,24 @@ class DocumentDataImport implements OnEachRow, WithChunkReading, WithEvents, Wit
             $status_wfm = '';
         } elseif ($milestoneValue && in_array(strtolower($milestoneValue), $doneMilestones)) {
             $status_wfm = 'done close bima';
+        }
+
+        if ($existingRecord) {
+            $statusLama = $existingRecord->status_wfm;
+            $statusBaru = $status_wfm; // Ambil status baru dari data yang akan disimpan
+
+            // Jika status lama dan status baru BERBEDA, maka buat log
+            if ($statusLama !== $statusBaru) {
+                UpdateLog::create([
+                    'order_id' => $existingRecord->order_id,
+                    'product_name' => $existingRecord->product_name ?? $existingRecord->product,
+                    'customer_name' => $existingRecord->customer_name,
+                    'nama_witel' => $existingRecord->nama_witel,
+                    'status_lama' => $statusLama,
+                    'status_baru' => $statusBaru,
+                    'sumber_update' => 'Upload Data Mentah',
+                ]);
+            }
         }
 
         $newData = [
@@ -176,7 +211,9 @@ class DocumentDataImport implements OnEachRow, WithChunkReading, WithEvents, Wit
             $individualProducts = explode('-', $productValue);
             foreach ($individualProducts as $pName) {
                 $pName = trim($pName);
-                if (empty($pName)) continue;
+                if (empty($pName)) {
+                    continue;
+                }
                 OrderProduct::create([
                     'order_id' => $orderId, 'product_name' => $pName, 'net_price' => $this->calculatePrice($pName, $segment, $witel),
                     'status_wfm' => $status_wfm, 'channel' => ($rowAsArray['channel'] ?? null) === 'hsi' ? 'SC-One' : ($rowAsArray['channel'] ?? null),

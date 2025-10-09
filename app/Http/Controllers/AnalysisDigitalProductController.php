@@ -9,9 +9,9 @@ use App\Exports\KpiPoExport;
 use App\Models\AccountOfficer;
 use App\Models\CustomTarget;
 use App\Models\DocumentData;
-use App\Models\TableConfiguration;
 use App\Models\Target;
 use App\Models\UpdateLog;
+use App\Models\UserTableConfiguration;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Bus;
@@ -261,8 +261,7 @@ class AnalysisDigitalProductController extends Controller
         $pageName = 'analysis_digital_'.strtolower($selectedSegment);
 
         // Cari record konfigurasi di database
-        $configRecord = TableConfiguration::where('page_name', $pageName)
-            ->where('user_id', auth()->id())
+        $configRecord = UserTableConfiguration::where('page_name', $pageName)
             ->first();
 
         // Variabel ini yang akan kita kirim ke frontend
@@ -744,25 +743,27 @@ class AnalysisDigitalProductController extends Controller
         return Excel::download(new KpiPoExport($kpiData), 'kpi_po_report_'.now()->format('Y-m-d').'.xlsx');
     }
 
-    public function saveTableConfig(Request $request)
+    public function saveConfig(Request $request)
     {
         $validated = $request->validate([
             'configuration' => 'required|array',
             'page_name' => 'required|string',
         ]);
 
-        // Menggunakan updateOrCreate untuk mencari berdasarkan user_id dan page_name
-        TableConfiguration::updateOrCreate(
+        // Menggunakan updateOrCreate untuk mencari berdasarkan page_name
+        UserTableConfiguration::updateOrCreate(
             [
-                'user_id' => Auth::id(),
                 'page_name' => $validated['page_name'],
             ],
             [
                 'configuration' => $validated['configuration'],
-            ],
+                // Tambahkan user_id jika Anda ingin tahu siapa yang terakhir mengubah
+                'user_id' => Auth::id(),
+            ]
         );
 
-        return Redirect::back();
+        // [FIX] Tambahkan ->with('success', '...') pada redirect Anda
+        return Redirect::back()->with('success', 'Tampilan tabel berhasil disimpan!');
     }
 
     public function resetTableConfig(Request $request)
@@ -771,8 +772,7 @@ class AnalysisDigitalProductController extends Controller
             'page_name' => 'required|string',
         ]);
 
-        TableConfiguration::where('user_id', auth()->id())
-            ->where('page_name', $validated['page_name'])
+        UserTableConfiguration::where('page_name', $validated['page_name'])
             ->delete();
 
         return Redirect::back()->with('success', 'Tampilan tabel berhasil di-reset ke pengaturan awal.');
@@ -786,7 +786,7 @@ class AnalysisDigitalProductController extends Controller
 
         $pageName = 'analysis_digital_'.strtolower($validated['segment']); // [FIX] Tambahkan user_id
 
-        $configRecord = TableConfiguration::where('page_name', $pageName)->first();
+        $configRecord = UserTableConfiguration::where('page_name', $pageName)->first();
 
         // Jika ada record, kirim konfigurasinya. Jika tidak, kirim null.
         if ($configRecord) {

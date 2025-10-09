@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import Sidebar from '@/Components/Sidebar';
 import Header from '@/Components/Header';
 import { usePage } from '@inertiajs/react';
+import { Toaster } from 'react-hot-toast';
 
 export default function AuthenticatedLayout({ header, children }) {
     const user = usePage().props.auth?.user;
@@ -26,6 +27,19 @@ export default function AuthenticatedLayout({ header, children }) {
 
     return (
         <div className="min-h-screen bg-gray-100 font-sans">
+            <Toaster
+                position="top-center"
+                reverseOrder={false}
+                toastOptions={{
+                    // Styling dasar agar cocok dengan tema
+                    style: {
+                        borderRadius: '8px',
+                        background: '#333',
+                        color: '#fff',
+                    },
+                }}
+            />
+
             {/* Sidebar sekarang menerima props untuk mengontrolnya */}
             <Sidebar
                 user={user}

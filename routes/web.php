@@ -1,16 +1,14 @@
 <?php
 
-use Illuminate\Foundation\Application;
-use Illuminate\Support\Facades\Route;
-use Illuminate\Support\Facades\Redirect; // <-- Pastikan ini ada
-use Inertia\Inertia;
+use App\Http\Controllers\AccountOfficerController;
+use App\Http\Controllers\ActionBasedController; // <-- Pastikan ini ada
+use App\Http\Controllers\AnalysisDigitalProductController;
+use App\Http\Controllers\DashboardDigitalProductController;
+use App\Http\Controllers\GalaksiController;
 use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\UserController;
-use App\Http\Controllers\GalaksiController;
-use App\Http\Controllers\DashboardDigitalProductController;
-use App\Http\Controllers\AnalysisDigitalProductController;
-use App\Http\Controllers\ActionBasedController;
-use App\Http\Controllers\AccountOfficerController;
+use Illuminate\Support\Facades\Redirect;
+use Illuminate\Support\Facades\Route;
 
 /*
 |--------------------------------------------------------------------------
@@ -24,11 +22,9 @@ Route::get('/', function () {
     return Redirect::route('login');
 });
 
-
 // --- RUTE YANG MEMERLUKAN AUTENTIKASI ---
 // Semua rute di dalam grup ini hanya bisa diakses oleh pengguna yang sudah login
 Route::middleware(['auth', 'verified'])->group(function () {
-
     /*
     |--------------------------------------------------------------------------
     | Rute untuk SEMUA Peran (User, Admin, Superadmin)
@@ -50,11 +46,11 @@ Route::middleware(['auth', 'verified'])->group(function () {
 
     Route::get('/galaksi', [GalaksiController::class, 'index'])->name('galaksi.index');
 
-    Route::post('/analysis-digital-product/save-config', [App\Http\Controllers\AnalysisDigitalProductController::class, 'saveTableConfig'])->name('analysisDigitalProduct.saveConfig');
+    Route::post('/analysis-digital-product/save-config', [AnalysisDigitalProductController::class, 'saveConfig'])->name('analysisDigitalProduct.saveConfig');
 
-    Route::post('/analysis-digital-product/reset-config', [App\Http\Controllers\AnalysisDigitalProductController::class, 'resetTableConfig'])->name('analysisDigitalProduct.resetConfig');
+    Route::post('/analysis-digital-product/reset-config', [AnalysisDigitalProductController::class, 'resetTableConfig'])->name('analysisDigitalProduct.resetConfig');
 
-    Route::get('/analysis-digital-product/get-config', [App\Http\Controllers\AnalysisDigitalProductController::class, 'getTableConfig'])->name('analysisDigitalProduct.getConfig');
+    Route::get('/analysis-digital-product/get-config', [AnalysisDigitalProductController::class, 'getTableConfig'])->name('analysisDigitalProduct.getConfig');
 
     /*
     |--------------------------------------------------------------------------
@@ -97,7 +93,6 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::put('/qc-update/{documentData:order_id}/cancel', [AnalysisDigitalProductController::class, 'updateQcStatusToCancel'])->name('qc.update.cancel');
     });
 
-
     /*
     |--------------------------------------------------------------------------
     | Rute HANYA untuk Superadmin
@@ -108,7 +103,6 @@ Route::middleware(['auth', 'verified'])->group(function () {
         // termasuk GET /users dengan nama 'users.index'
         Route::resource('users', UserController::class);
     });
-
 });
 
 // Rute Autentikasi Bawaan Laravel (login, register, dll.)

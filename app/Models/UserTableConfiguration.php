@@ -5,7 +5,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 
-class TableConfiguration extends Model
+class UserTableConfiguration extends Model
 {
     use HasFactory;
 
@@ -15,12 +15,7 @@ class TableConfiguration extends Model
         'configuration',
     ];
 
-    /**
-     * The attributes that should be cast.
-     *
-     * @var array<string, string>
-     */
     protected $casts = [
-        'configuration' => 'array',
+        'configuration' => 'array', // Otomatis cast dari/ke JSON
     ];
 }
