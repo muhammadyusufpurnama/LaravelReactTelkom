@@ -6,6 +6,7 @@ use App\Exports\DataReportExport;
 use App\Exports\HistoryExport;
 use App\Exports\InProgressExport;
 use App\Exports\KpiPoExport;
+use App\Jobs\ImportAndProcessDocument;
 use App\Models\AccountOfficer;
 use App\Models\CustomTarget;
 use App\Models\DocumentData;
@@ -552,7 +553,7 @@ class AnalysisDigitalProductController extends Controller
         $request->validate(['document' => 'required|file|mimes:xlsx,xls,csv']);
         $path = $request->file('document')->store('excel-imports', 'local');
 
-        $batch = Bus::batch([new \App\Jobs\ImportAndProcessDocument($path)])
+        $batch = Bus::batch([new ImportAndProcessDocument($path)])
             ->name('Import Data Mentah')
             ->dispatch();
 

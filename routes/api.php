@@ -2,11 +2,11 @@
 
 // routes/api.php
 
-use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Route;
+use App\Http\Controllers\Admin\DataUserController;
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\DashboardController;
-use App\Http\Controllers\Admin\DataUserController;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Route;
 
 // Route untuk otentikasi (login, register, logout)
 Route::post('/register', [AuthController::class, 'register']);
@@ -28,7 +28,7 @@ Route::middleware(['auth:sanctum', 'role:admin'])->prefix('admin')->group(functi
     // Contoh: GET /api/admin/users
     Route::get('/users', [DataUserController::class, 'getAllUsers']);
     // Contoh: POST /api/admin/products
-    Route::post('/products', function() {
+    Route::post('/products', function () {
         // Logika menambah produk
     });
 });

@@ -3,15 +3,16 @@
 namespace App\Jobs;
 
 use App\Imports\DocumentDataImport;
+use Carbon\Carbon;
 use Illuminate\Bus\Batchable;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
-use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
-use Maatwebsite\Excel\Facades\Excel;
+use Maatwebsite\Excel\Facades\Excel; // PENTING: Impor class Carbon untuk tanggal
 
 class ImportAndProcessDocument implements ShouldQueue
 {
@@ -31,35 +32,68 @@ class ImportAndProcessDocument implements ShouldQueue
 
     public function handle(): void
     {
-        // Pastikan job ini memiliki akses ke batch ID
-        if (!$this->batch()) {
-            Log::error('Job ImportAndProcessDocument dijalankan tanpa batch.');
-
-            return;
-        }
-
-        Log::info('Batch ['.$this->batch()->id.']: Job ImportAndProcessDocument DIMULAI.');
-
         if ($this->batch()->cancelled()) {
-            Log::warning('Batch ['.$this->batch()->id.']: Proses dibatalkan sebelum import.');
-
             return;
         }
+
+        $currentBatchId = $this->batch()->id;
+        Log::info("Batch [{$currentBatchId}]: Job ImportAndProcessDocument DIMULAI.");
 
         try {
-            // Cukup panggil Importer dan kirimkan ID batch.
-            // Importer akan menangani perhitungan total baris dan update progresnya sendiri.
-            Excel::import(new DocumentDataImport($this->batch()->id), $this->path);
+            // DETEKSI IMPORT BARU
+            $isFreshImport = DB::table('document_data')->doesntExist();
 
-            // Setelah import selesai, pastikan progres di set ke 100% sebagai penanda final.
-            Cache::put('import_progress_'.$this->batch()->id, 100, now()->addMinutes(30));
+            // LANGKAH 1: KOSONGKAN TABEL TEMP (jika bukan import baru)
+            if (!$isFreshImport) {
+                DB::table('temp_upload_data')->truncate();
+            }
 
-            // Simpan ID batch terakhir yang sukses
-            Cache::put('last_successful_batch_id', $this->batch()->id, now()->addHours(24));
+            // LANGKAH 2: JALANKAN PROSES IMPORT UTAMA DENGAN CHUNKING
+            // Class DocumentDataImport sekarang akan menangani semuanya
+            Log::info("Batch [{$currentBatchId}]: Menjalankan proses import utama dengan chunking.");
+            Excel::import(new DocumentDataImport($currentBatchId, $isFreshImport), $this->path);
 
-            Log::info('Batch ['.$this->batch()->id.']: Job ImportAndProcessDocument SELESAI.');
+            // LANGKAH 3 (CANCEL) HANYA JIKA BUKAN IMPORT BARU
+            if (!$isFreshImport) {
+                Log::info("Batch [{$currentBatchId}]: Menjalankan logika pembatalan order.");
+                DB::transaction(function () use ($currentBatchId) {
+                    // Ambil order ID yang ada di database tapi TIDAK ADA di file yang baru diupload
+                    $ordersToCancel = DB::table('document_data as d')
+                        ->leftJoin('temp_upload_data as t', 'd.order_id', '=', 't.order_id')
+                        ->where('d.status_wfm', 'in progress')
+                        ->whereNull('t.order_id')
+                        ->where('d.batch_id', '!=', $currentBatchId)
+                        ->select('d.order_id', 'd.product', 'd.customer_name', 'd.nama_witel', 'd.status_wfm')
+                        ->get();
+
+                    if ($ordersToCancel->isNotEmpty()) {
+                        // Buat log untuk setiap order yang di-cancel
+                        $logs = $ordersToCancel->map(function ($order) {
+                            return [
+                                'order_id' => $order->order_id,
+                                'product_name' => $order->product,
+                                'customer_name' => $order->customer_name,
+                                'nama_witel' => $order->nama_witel,
+                                'status_lama' => $order->status_wfm,
+                                'status_baru' => 'cancel',
+                                'sumber_update' => 'Upload Data Mentah Cancel',
+                                'created_at' => now(),
+                                'updated_at' => now(),
+                            ];
+                        })->all();
+                        DB::table('update_logs')->insert($logs);
+
+                        // Update status di tabel utama
+                        DB::table('document_data')
+                            ->whereIn('order_id', $ordersToCancel->pluck('order_id'))
+                            ->update(['status_wfm' => 'cancel']);
+                    }
+                });
+            }
+
+            Log::info("Batch [{$currentBatchId}]: Job ImportAndProcessDocument SELESAI.");
         } catch (\Throwable $e) {
-            $this->fail($e); // Panggil method failed() jika terjadi error
+            $this->fail($e);
         }
     }
 
@@ -68,12 +102,8 @@ class ImportAndProcessDocument implements ShouldQueue
         $batchId = $this->batch() ? $this->batch()->id : 'N/A';
         Log::error("Batch [{$batchId}]: Job ImportAndProcessDocument GAGAL.");
         Log::error($exception->getMessage());
-        Log::error($exception->getTraceAsString()); // Tambahkan trace untuk debug
-
-        // Set progress ke -1 untuk menandakan error di frontend (opsional)
-        if ($this->batch()) {
-            Cache::put('import_progress_'.$this->batch()->id, -1, now()->addMinutes(30));
-        }
+        // Batasi panjang trace agar log tidak terlalu besar
+        Log::error(substr($exception->getTraceAsString(), 0, 2000));
     }
 
     private function calculateProductPrice(string $productName, DocumentData $order): int

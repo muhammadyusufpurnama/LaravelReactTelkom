@@ -23,10 +23,14 @@ import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { debounce } from "lodash";
 import toast from "react-hot-toast";
+import Swal from 'sweetalert2'; // <-- Tambahkan ini
+import withReactContent from 'sweetalert2-react-content';
 
 // ===================================================================
 // Helper & Utility Components
 // ===================================================================
+
+const MySwal = withReactContent(Swal);
 
 const Pagination = ({ links = [] }) => {
     if (links.length <= 3) return null;
@@ -957,25 +961,59 @@ const SmeReportTable = ({
 const InProgressTable = ({
     dataPaginator = { data: [], links: [], from: 0 },
 }) => {
-    const handleCompleteClick = (orderId) => {
-        router.put(
-            route("manual.update.complete", { order_id: orderId }),
-            {},
-            {
-                preserveScroll: true,
-                onSuccess: () => router.reload({ preserveState: false }),
-            },
-        );
+    const handleCompleteClick = async (orderId) => {
+        const result = await MySwal.fire({
+            title: 'Konfirmasi Order Selesai',
+            text: `Anda yakin ingin mengubah status Order ID ${orderId} menjadi "COMPLETE"?`,
+            icon: 'question',
+            showCancelButton: true,
+            confirmButtonColor: '#28a745',
+            cancelButtonColor: '#6c757d',
+            confirmButtonText: 'Ya, Selesaikan!',
+            cancelButtonText: 'Batal'
+        });
+
+        if (result.isConfirmed) {
+            router.put(
+                route("manual.update.complete", { order_id: orderId }),
+                {},
+                {
+                    preserveScroll: true,
+                    onSuccess: () => {
+                        toast.success(`Order ID ${orderId} berhasil di-complete.`);
+                        router.reload({ preserveState: false });
+                    },
+                    onError: () => toast.error(`Gagal mengubah status Order ID ${orderId}.`)
+                },
+            );
+        }
     };
-    const handleCancelClick = (orderId) => {
-        router.put(
-            route("manual.update.cancel", { order_id: orderId }),
-            {},
-            {
-                preserveScroll: true,
-                onSuccess: () => router.reload({ preserveState: false }),
-            },
-        );
+    const handleCancelClick = async (orderId) => {
+        const result = await MySwal.fire({
+            title: 'Konfirmasi Pembatalan',
+            text: `Anda yakin ingin mengubah status Order ID ${orderId} menjadi "CANCEL"?`,
+            icon: 'warning',
+            showCancelButton: true,
+            confirmButtonColor: '#d33',
+            cancelButtonColor: '#6c757d',
+            confirmButtonText: 'Ya, Batalkan!',
+            cancelButtonText: 'Kembali'
+        });
+
+        if (result.isConfirmed) {
+            router.put(
+                route("manual.update.cancel", { order_id: orderId }),
+                {},
+                {
+                    preserveScroll: true,
+                    onSuccess: () => {
+                        toast.success(`Order ID ${orderId} berhasil di-cancel.`);
+                        router.reload({ preserveState: false });
+                    },
+                    onError: () => toast.error(`Gagal membatalkan Order ID ${orderId}.`)
+                },
+            );
+        }
     };
     return (
         <>
@@ -1068,52 +1106,88 @@ const InProgressTable = ({
 };
 
 const CompleteTable = ({ dataPaginator = { data: [], links: [] } }) => {
-    const handleSetInProgress = (orderId) => {
-        if (
-            confirm(
-                `Anda yakin ingin mengembalikan Order ID ${orderId} ke status "In Progress"?`,
-            )
-        ) {
+    const handleSetInProgress = async (orderId) => {
+        const result = await MySwal.fire({
+            title: 'Kembalikan ke In Progress?',
+            text: `Anda yakin ingin mengembalikan Order ID ${orderId} ke status "In Progress"?`,
+            icon: 'question',
+            showCancelButton: true,
+            confirmButtonColor: '#007bff',
+            cancelButtonColor: '#6c757d',
+            confirmButtonText: 'Ya, Kembalikan!',
+            cancelButtonText: 'Batal'
+        });
+
+        if (result.isConfirmed) {
             router.put(
                 route("complete.update.progress", { documentData: orderId }),
                 {},
                 {
                     preserveScroll: true,
-                    onSuccess: () => router.reload({ preserveState: false }),
+                    onSuccess: () => {
+                        toast.info(`Order ${orderId} dikembalikan ke In Progress.`);
+                        router.reload({ preserveState: false });
+                    },
+                    onError: () => toast.error('Gagal mengubah status.')
                 },
             );
         }
     };
-    const handleSetCancel = (orderId) => {
-        if (
-            confirm(
-                `Anda yakin ingin mengubah status Order ID ${orderId} menjadi "Cancel"?`,
-            )
-        ) {
+    const handleSetCancel = async (orderId) => {
+        const result = await MySwal.fire({
+            title: 'Ubah ke Cancel?',
+            text: `Anda yakin ingin mengubah status Order ID ${orderId} menjadi "Cancel"?`,
+            icon: 'warning',
+            showCancelButton: true,
+            confirmButtonColor: '#d33',
+            cancelButtonColor: '#6c757d',
+            confirmButtonText: 'Ya, Ubah ke Cancel!',
+            cancelButtonText: 'Batal'
+        });
+
+        if (result.isConfirmed) {
             router.put(
                 route("complete.update.cancel", { documentData: orderId }),
                 {},
                 {
                     preserveScroll: true,
-                    onSuccess: () => router.reload({ preserveState: false }),
+                    onSuccess: () => {
+                        toast.success(`Order ${orderId} berhasil diubah ke Cancel.`);
+                        router.reload({ preserveState: false });
+                    },
+                    onError: () => toast.error('Gagal mengubah status.')
                 },
             );
         }
     };
 
     // [TAMBAHKAN] Fungsi baru untuk mengirim order ke QC
-    const handleSetQc = (orderId) => {
-        if (
-            confirm(
-                `Anda yakin ingin mengirim Order ID ${orderId} kembali ke proses QC? Status WFM akan dikosongkan.`,
-            )
-        ) {
+    const handleSetQc = async (orderId) => {
+        const result = await MySwal.fire({
+            title: 'Kirim Kembali ke QC?',
+            text: `Anda yakin ingin mengirim Order ID ${orderId} kembali ke proses QC? Status WFM akan dikosongkan.`,
+            icon: 'warning',
+            showCancelButton: true,
+            confirmButtonColor: '#ffc107',
+            cancelButtonColor: '#6c757d',
+            confirmButtonText: 'Ya, Kirim ke QC!',
+            cancelButtonText: 'Batal',
+            customClass: {
+                confirmButton: 'text-black'
+            }
+        });
+
+        if (result.isConfirmed) {
             router.put(
                 route("complete.update.qc", { documentData: orderId }),
                 {},
                 {
                     preserveScroll: true,
-                    onSuccess: () => router.reload({ preserveState: false }),
+                    onSuccess: () => {
+                        toast.info(`Order ${orderId} dikirim kembali ke QC.`);
+                        router.reload({ preserveState: false });
+                    },
+                    onError: () => toast.error('Gagal mengirim ke QC.')
                 },
             );
         }
@@ -1220,46 +1294,81 @@ const CompleteTable = ({ dataPaginator = { data: [], links: [] } }) => {
 // GANTI SELURUH KOMPONEN QcTable ANDA DENGAN INI
 const QcTable = ({ dataPaginator = { data: [], links: [], from: 0 } }) => {
     // ... (fungsi-fungsi handler Anda biarkan sama)
-    const handleSetInProgress = (orderId) => {
-        if (confirm(`Kembalikan Order ID ${orderId} ke "In Progress"?`)) {
+    const handleSetInProgress = async (orderId) => {
+        const result = await MySwal.fire({
+            title: 'Kembalikan ke In Progress?',
+            text: `Anda yakin ingin mengembalikan Order ID ${orderId} ke status "In Progress"?`,
+            icon: 'question',
+            showCancelButton: true,
+            confirmButtonColor: '#007bff',
+            cancelButtonColor: '#6c757d',
+            confirmButtonText: 'Ya, Kembalikan!',
+            cancelButtonText: 'Batal'
+        });
+
+        if (result.isConfirmed) {
             router.put(
-                route("qc.update.progress", { order_id: orderId }),
+                route("complete.update.progress", { documentData: orderId }),
                 {},
                 {
                     preserveScroll: true,
-                    onSuccess: () => router.reload({ preserveState: false }),
+                    onSuccess: () => {
+                        toast.info(`Order ${orderId} dikembalikan ke In Progress.`);
+                        router.reload({ preserveState: false });
+                    },
+                    onError: () => toast.error('Gagal mengubah status.')
                 },
             );
         }
     };
-    const handleSetDone = (orderId) => {
-        if (
-            confirm(
-                `Ubah status Order ID ${orderId} menjadi "Done Close Bima"?`,
-            )
-        ) {
+    const handleSetDone = async (orderId) => {
+        const result = await MySwal.fire({
+            title: 'Selesaikan Order?',
+            text: `Anda yakin ingin mengubah status Order ID ${orderId} menjadi "Done Close Bima"?`,
+            icon: 'success',
+            showCancelButton: true,
+            confirmButtonColor: '#007bff',
+            cancelButtonColor: '#6c757d',
+            confirmButtonText: 'Ya, Kembalikan!',
+            cancelButtonText: 'Batal'
+        });
+        if (result.isConfirmed) {
             router.put(
                 route("qc.update.done", { order_id: orderId }),
                 {},
                 {
                     preserveScroll: true,
-                    onSuccess: () => router.reload({ preserveState: false }),
+                    onSuccess: () => {
+                        toast.success(`Order ${orderId} berhasil diselesaikan.`);
+                        router.reload({ preserveState: false });
+                    },
+                    onError: () => toast.error('Gagal menyelesaikan order.')
                 },
             );
         }
-    };
-    const handleSetCancel = (orderId) => {
-        if (
-            confirm(
-                `Ubah status Order ID ${orderId} menjadi "Done Close Cancel"?`,
-            )
-        ) {
+    }
+    const handleSetCancel = async (orderId) => {
+        const result = await MySwal.fire({
+            title: 'Batalkan Order?',
+            text: `Anda yakin ingin mengubah status Order ID ${orderId} menjadi "Done Close Cancel"?`,
+            icon: 'warning',
+            showCancelButton: true,
+            confirmButtonColor: '#007bff',
+            cancelButtonColor: '#6c757d',
+            confirmButtonText: 'Ya, Kembalikan!',
+            cancelButtonText: 'Batal'
+        });
+        if (result.isConfirmed) {
             router.put(
                 route("qc.update.cancel", { order_id: orderId }),
                 {},
                 {
                     preserveScroll: true,
-                    onSuccess: () => router.reload({ preserveState: false }),
+                    onSuccess: () => {
+                        toast.success(`Order ${orderId} berhasil di-cancel.`);
+                        router.reload({ preserveState: false });
+                    },
+                    onError: () => toast.error('Gagal membatalkan order.')
                 },
             );
         }
@@ -1680,34 +1789,46 @@ const TableConfigurator = ({
         formState.groupTitle,
     ]);
 
-    const handleResetConfig = () => {
-        if (
-            confirm(
-                "Anda yakin ingin mengembalikan tampilan tabel ke pengaturan awal? Semua kolom tambahan, urutan, dan perubahan warna akan hilang.",
-            )
-        ) {
-            // Buat kunci dinamis berdasarkan segmen yang aktif
+    const handleResetConfig = async () => {
+        const result = await MySwal.fire({ // <-- Ganti confirm
+            title: 'Anda Yakin?',
+            text: "Semua kolom tambahan, urutan, dan perubahan warna akan hilang. Aksi ini tidak dapat dibatalkan.",
+            icon: 'warning',
+            showCancelButton: true,
+            confirmButtonColor: '#3085d6',
+            cancelButtonColor: '#d33',
+            confirmButtonText: 'Ya, reset tampilan!',
+            cancelButtonText: 'Batal'
+        });
+
+        if (result.isConfirmed) { // <-- Cek konfirmasi
             const storageKey = `userTableConfig_${currentSegment}`;
-            // Hapus kunci yang benar dari localStorage
             localStorage.removeItem(storageKey);
-            // Muat ulang halaman
             window.location.reload();
         }
     };
 
-    const handleDeleteColumn = () => {
+    const handleDeleteColumn = async () => {
         if (!columnToDelete) {
-            alert("Silakan pilih kolom yang akan dihapus.");
+            toast.error("Silakan pilih kolom yang akan dihapus."); // <-- Ganti alert
             return;
         }
         const selectedColumnLabel = allColumnsList.find(
             (c) => c.value === columnToDelete,
         )?.label;
-        if (
-            confirm(
-                `Anda yakin ingin menghapus kolom "${selectedColumnLabel}"? Aksi ini tidak dapat dibatalkan.`,
-            )
-        ) {
+
+        const result = await MySwal.fire({ // <-- Ganti confirm
+            title: 'Anda Yakin?',
+            text: `Anda akan menghapus kolom "${selectedColumnLabel}". Aksi ini tidak dapat dibatalkan.`,
+            icon: 'warning',
+            showCancelButton: true,
+            confirmButtonColor: '#d33',
+            cancelButtonColor: '#3085d6',
+            confirmButtonText: 'Ya, hapus kolom!',
+            cancelButtonText: 'Batal'
+        });
+
+        if (result.isConfirmed) {
             const [groupTitle, colKey, subColKey] = columnToDelete.split(".");
             const newConfig = JSON.parse(JSON.stringify(tableConfig));
             const targetGroup = newConfig.find(
@@ -1742,7 +1863,7 @@ const TableConfigurator = ({
                 } else {
                     setTableConfig(newConfig);
                 }
-                alert("Kolom berhasil dihapus.");
+                toast.success("Kolom berhasil dihapus.");
             }
         }
     };
@@ -1801,7 +1922,7 @@ const TableConfigurator = ({
                 ],
             };
             setTableConfig((prev) => [...prev, newGroupObject]);
-            alert(
+            toast.success(
                 `Grup kolom "${formState.columnTitle}" berhasil ditambahkan.`,
             );
         } else {
@@ -1823,7 +1944,7 @@ const TableConfigurator = ({
                             !formState.operands[0] ||
                             !formState.operands[1])
                     ) {
-                        alert(
+                        toast.error(
                             "Untuk Persentase, harap pilih kolom Pembilang dan Penyebut.",
                         );
                         return;
@@ -1834,7 +1955,7 @@ const TableConfigurator = ({
                         ) &&
                         formState.operands.length === 0
                     ) {
-                        alert(
+                        toast.error(
                             `Untuk operasi ${formState.operation.toUpperCase()}, harap pilih minimal satu kolom.`,
                         );
                         return;
@@ -1846,7 +1967,7 @@ const TableConfigurator = ({
                 }
                 targetGroup.columns.push(newColumnDef);
                 setTableConfig(newConfig);
-                alert(
+                toast.success(
                     `Sub-kolom "${formState.columnTitle}" berhasil ditambahkan ke grup "${formState.groupTitle}".`,
                 );
             }
@@ -1907,7 +2028,7 @@ const TableConfigurator = ({
         });
 
         setTableConfig(newConfig);
-        alert(
+        toast.success(
             `Warna untuk grup "${editGroup.title}" dan turunannya berhasil diubah.`,
         );
     };
@@ -3040,6 +3161,15 @@ export default function AnalysisDigitalProduct({
     //     }
     // }, [tableConfig]);
 
+    useEffect(() => {
+        if (flash.success) {
+            toast.success(flash.success);
+        }
+        if (flash.error) {
+            toast.error(flash.error);
+        }
+    }, [flash]);
+
     const [tableConfig, setTableConfig] = useState(
         currentSegment === 'SME' ? smeTableConfigTemplate : legsTableConfigTemplate
     );
@@ -3453,17 +3583,30 @@ export default function AnalysisDigitalProduct({
         </button>
     );
 
-    const handleClearHistory = () => {
-        if (
-            confirm(
-                "Anda yakin ingin menghapus seluruh data histori? Aksi ini tidak dapat dibatalkan.",
-            )
-        ) {
+    const handleClearHistory = async () => {
+        const result = await MySwal.fire({
+            title: 'Anda Yakin?',
+            text: "Anda akan menghapus seluruh data histori. Aksi ini tidak dapat dibatalkan!",
+            icon: 'warning',
+            showCancelButton: true,
+            confirmButtonColor: '#d33',
+            cancelButtonColor: '#3085d6',
+            confirmButtonText: 'Ya, hapus semua!',
+            cancelButtonText: 'Batal'
+        });
+
+        if (result.isConfirmed) {
             router.post(
                 route("analysisDigitalProduct.clearHistory"),
                 {},
                 {
                     preserveScroll: true,
+                    onSuccess: () => {
+                        toast.success("Seluruh histori berhasil dihapus.");
+                    },
+                    onError: () => {
+                        toast.error("Gagal menghapus histori.");
+                    },
                 },
             );
         }
@@ -3474,7 +3617,7 @@ export default function AnalysisDigitalProduct({
         <AuthenticatedLayout auth={auth} header="Analysis Digital Product">
             <Head title="Analysis Digital Product" />
 
-            {flash.success && (
+            {/* {flash.success && (
                 <div
                     className="mb-4 bg-green-100 border-l-4 border-green-500 text-green-700 p-4"
                     role="alert"
@@ -3489,7 +3632,7 @@ export default function AnalysisDigitalProduct({
                 >
                     <p>{flash.error}</p>
                 </div>
-            )}
+            )} */}
 
             <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
                 <div className="lg:col-span-3 space-y-6">

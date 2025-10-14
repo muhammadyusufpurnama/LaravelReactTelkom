@@ -7,14 +7,15 @@ use App\Models\OrderProduct;
 use App\Models\UpdateLog;
 use App\Traits\CalculatesProductPrice;
 use Carbon\Carbon;
-// use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Maatwebsite\Excel\Concerns\OnEachRow;
 use Maatwebsite\Excel\Concerns\WithChunkReading;
 use Maatwebsite\Excel\Concerns\WithEvents;
 use Maatwebsite\Excel\Concerns\WithHeadingRow;
 use Maatwebsite\Excel\Concerns\WithUpserts;
+use Maatwebsite\Excel\Events\AfterChunk;
 use Maatwebsite\Excel\Events\AfterImport;
 use Maatwebsite\Excel\Events\BeforeImport;
 use Maatwebsite\Excel\Row;
@@ -24,12 +25,15 @@ class DocumentDataImport implements OnEachRow, WithChunkReading, WithEvents, Wit
     use CalculatesProductPrice;
 
     private string $batchId;
+    private bool $isFreshImport;
     private int $totalRows = 0;
     private int $processedRows = 0;
+    private array $chunkOrderIds = [];
 
-    public function __construct(string $batchId)
+    public function __construct(string $batchId, bool $isFreshImport) // <-- MODIFIKASI INI
     {
         $this->batchId = $batchId;
+        $this->isFreshImport = $isFreshImport; // <-- TAMBAHKAN INI
     }
 
     public function uniqueBy()
@@ -64,6 +68,12 @@ class DocumentDataImport implements OnEachRow, WithChunkReading, WithEvents, Wit
                 }
             },
             // [DIHAPUS] Event AfterChunk dihapus karena kita pindahkan logikanya ke onRow
+            AfterChunk::class => function (AfterChunk $event) {
+                if (!$this->isFreshImport && !empty($this->chunkOrderIds)) {
+                    DB::table('temp_upload_data')->insert($this->chunkOrderIds);
+                    $this->chunkOrderIds = []; // Kosongkan array untuk chunk berikutnya
+                }
+            },
 
             // [TAMBAHAN] Event AfterImport untuk memastikan progres selesai 100%
             AfterImport::class => function (AfterImport $event) {
@@ -98,6 +108,9 @@ class DocumentDataImport implements OnEachRow, WithChunkReading, WithEvents, Wit
         $orderId = is_string($orderIdRaw) && strtoupper(substr($orderIdRaw, 0, 2)) === 'SC' ? substr($orderIdRaw, 2) : $orderIdRaw;
         if (empty($orderId)) {
             return;
+        }
+        if (!$this->isFreshImport && !empty($orderId)) {
+            $this->chunkOrderIds[] = ['order_id' => $orderId];
         }
 
         $productWithOrderId = trim($rowAsArray['product_order_id'] ?? '');

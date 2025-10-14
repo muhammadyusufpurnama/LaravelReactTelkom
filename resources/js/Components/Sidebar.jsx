@@ -10,7 +10,7 @@ const Logo = ({ isSidebarOpen }) => (
             <h1 className="text-2xl font-bold text-red-600">Telkom<span className="text-gray-800">Indonesia</span></h1>
         </div>
         <div className={`absolute transition-opacity duration-200 ${!isSidebarOpen ? 'opacity-100' : 'opacity-0'}`}>
-            <img src="/images/logo telkom.jpg" alt="Telkom" className="h-8" />
+            <img src="/images/logo telkom.png" alt="Telkom" className="h-8" />
         </div>
     </div>
 );
