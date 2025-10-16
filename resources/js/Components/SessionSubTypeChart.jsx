@@ -1,59 +1,79 @@
 // resources/js/Components/SessionSubTypeChart.jsx
 
 import React from 'react';
-import { BarChart, Bar, XAxis, YAxis, ResponsiveContainer, Cell, LabelList } from 'recharts';
+import { Bar } from 'react-chartjs-2';
 
-const SessionSubTypeChart = ({ data }) => {
-    if (!data) {
-        return <div className="text-center text-gray-500 p-4">Loading...</div>;
-    }
-
-    const totalAll = data.reduce((acc, entry) => acc + entry.total, 0);
-
-    const chartData = data.map(item => ({
-        ...item,
-        percentage: totalAll > 0 ? ((item.total / totalAll) * 100).toFixed(2) : 0,
-    }));
-
-    const colors = ['#8884d8', '#ff8042', '#ffc658', '#e83e8c', '#82ca9d'];
-
-    const renderCustomizedLabel = (props) => {
-        const { x, y, width, height, payload } = props;
-
-        // [FIX] Tambahkan pengecekan 'payload' untuk menghindari error
-        if (payload && payload.total > 0) {
-            return (
-                <g>
-                    <text x={x + width + 10} y={y + height / 2} fill="#666" textAnchor="start" dominantBaseline="middle">
-                        {payload.total}  ({payload.percentage}%)
-                    </text>
-                </g>
-            );
+// Opsi untuk mengonfigurasi chart
+const options = {
+    indexAxis: 'y', // <-- Ini yang membuat chart menjadi horizontal
+    responsive: true,
+    maintainAspectRatio: false,
+    plugins: {
+        legend: {
+            display: false, // Menghilangkan legenda karena tidak diperlukan
+        },
+        tooltip: {
+            // [FUNGSI UTAMA] Mengaktifkan dan mengonfigurasi tooltip
+            enabled: true,
+            callbacks: {
+                // Mengubah teks di dalam tooltip agar lebih jelas
+                label: function (context) {
+                    return `Jumlah: ${context.raw}`;
+                }
+            }
         }
-        return null;
-    };
-
-    return (
-        <ResponsiveContainer width="100%" height={250}>
-            <BarChart data={chartData} layout="vertical" margin={{ top: 5, right: 100, left: 10, bottom: 5 }}>
-                <XAxis type="number" hide />
-                <YAxis
-                    dataKey="sub_type"
-                    type="category"
-                    axisLine={false}
-                    tickLine={false}
-                    width={40}
-                    tick={{ fill: '#333', fontWeight: 'bold' }}
-                />
-                <Bar dataKey="total" barSize={20} radius={[10, 10, 10, 10]}>
-                    {chartData.map((entry, index) => (
-                        <Cell key={`cell-${index}`} fill={colors[index % colors.length]} />
-                    ))}
-                    <LabelList dataKey="total" content={renderCustomizedLabel} />
-                </Bar>
-            </BarChart>
-        </ResponsiveContainer>
-    );
+    },
+    scales: {
+        x: {
+            // Opsi untuk sumbu horizontal (jumlah)
+            grid: {
+                display: false, // Menghilangkan garis grid vertikal
+            },
+            ticks: {
+                display: false, // Menghilangkan label angka di bawah
+            },
+            border: {
+                display: false // Menghilangkan garis sumbu x
+            }
+        },
+        y: {
+            // Opsi untuk sumbu vertikal (AO, SO, DO)
+            grid: {
+                display: false, // Menghilangkan garis grid horizontal
+            },
+            border: {
+                display: false // Menghilangkan garis sumbu y
+            }
+        }
+    }
 };
 
-export default SessionSubTypeChart;
+export default function SessionSubTypeChart({ data }) {
+    // Tampilkan pesan jika data tidak ada atau kosong
+    if (!data || data.length === 0) {
+        return <div className="flex items-center justify-center h-full text-gray-500">Tidak ada data untuk ditampilkan.</div>;
+    }
+
+    const chartData = {
+        // Label untuk setiap bar (AO, SO, DO, dll.)
+        labels: data.map(item => item.sub_type),
+        datasets: [
+            {
+                label: 'Jumlah Order',
+                // Data (angka) untuk setiap bar
+                data: data.map(item => item.total),
+                // Fungsi untuk memberikan warna berbeda pada setiap bar
+                backgroundColor: (context) => {
+                    const subType = context.chart.data.labels[context.dataIndex];
+                    if (subType === 'MO') return '#ec4899'; // Pink
+                    if (subType === 'AO') return '#8b5cf6'; // Ungu
+                    return '#a5b4fc'; // Warna default jika ada sub-type lain
+                },
+                borderRadius: 10, // Membuat ujung bar menjadi bulat
+                barThickness: 20, // Mengatur ketebalan bar
+            },
+        ],
+    };
+
+    return <Bar options={options} data={chartData} />;
+}

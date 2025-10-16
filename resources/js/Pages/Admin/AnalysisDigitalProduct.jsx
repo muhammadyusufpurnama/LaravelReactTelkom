@@ -156,12 +156,9 @@ const EditReportForm = ({ currentSegment, reportData, period }) => {
         return Array.from(new Set(reportData.map((item) => item.nama_witel)));
     }, [reportData]);
 
-    // Definisikan produk untuk label dan input agar lebih rapi
     const products = [
-        { key: "n", label: "Netmonk" },
-        { key: "o", label: "OCA" },
-        { key: "ae", label: "Antares" },
-        { key: "ps", label: "Pijar Sekolah" },
+        { key: "n", label: "Netmonk" }, { key: "o", label: "OCA" },
+        { key: "ae", label: "Antares" }, { key: "ps", label: "Pijar Sekolah" },
     ];
 
     const { data, setData, post, processing, errors } = useForm({
@@ -170,22 +167,17 @@ const EditReportForm = ({ currentSegment, reportData, period }) => {
         period: period + "-01",
     });
 
-    // ... (useEffect dan fungsi lainnya tetap sama) ...
     useEffect(() => {
         const initialTargets = {};
         reportData.forEach((item) => {
             initialTargets[item.nama_witel] = {
                 prov_comp: {
-                    n: item.prov_comp_n_target || 0,
-                    o: item.prov_comp_o_target || 0,
-                    ae: item.prov_comp_ae_target || 0,
-                    ps: item.prov_comp_ps_target || 0,
+                    n: item.prov_comp_n_target || 0, o: item.prov_comp_o_target || 0,
+                    ae: item.prov_comp_ae_target || 0, ps: item.prov_comp_ps_target || 0,
                 },
                 revenue: {
-                    n: item.revenue_n_target || 0,
-                    o: item.revenue_o_target || 0,
-                    ae: item.revenue_ae_target || 0,
-                    ps: item.revenue_ps_target || 0,
+                    n: item.revenue_n_target || 0, o: item.revenue_o_target || 0,
+                    ae: item.revenue_ae_target || 0, ps: item.revenue_ps_target || 0,
                 },
             };
         });
@@ -202,7 +194,7 @@ const EditReportForm = ({ currentSegment, reportData, period }) => {
 
     function submit(e) {
         e.preventDefault();
-        post(route("analysisDigitalProduct.targets"), { preserveScroll: true });
+        post(route("admin.analysisDigitalProduct.targets"), { preserveScroll: true });
     }
 
     const handleInputChange = (witel, metric, product, value) => {
@@ -217,24 +209,12 @@ const EditReportForm = ({ currentSegment, reportData, period }) => {
             },
         });
     };
-    // ===================================================================
 
     return (
-        <form
-            onSubmit={submit}
-            className="bg-white p-6 rounded-lg shadow-md text-sm"
-        >
-            <div
-                className="flex justify-between items-center cursor-pointer mb-4"
-                onClick={() => setIsExpanded(!isExpanded)}
-            >
-                <h3 className="font-semibold text-lg text-gray-800">
-                    Edit Target
-                </h3>
-                <button
-                    type="button"
-                    className="text-blue-600 text-sm font-bold hover:underline p-2"
-                >
+        <form onSubmit={submit} className="bg-white p-6 rounded-lg shadow-md text-sm">
+            <div className="flex justify-between items-center cursor-pointer mb-4" onClick={() => setIsExpanded(!isExpanded)}>
+                <h3 className="font-semibold text-lg text-gray-800">Edit Target</h3>
+                <button type="button" className="text-blue-600 text-sm font-bold hover:underline p-2">
                     {isExpanded ? "Minimize" : "Expand"}
                 </button>
             </div>
@@ -243,47 +223,24 @@ const EditReportForm = ({ currentSegment, reportData, period }) => {
                 <div className="mt-4">
                     {currentSegment === "SME" && (
                         <fieldset className="mb-4 border rounded-md p-3">
-                            <legend className="text-base font-semibold px-2">
-                                Prov Comp Targets
-                            </legend>
+                            <legend className="text-base font-semibold px-2">Prov Comp Targets</legend>
                             {witelList.map((witel) => (
                                 <div key={`${witel}-prov`} className="mb-3">
-                                    <h4 className="font-bold text-gray-600">
-                                        {witel}
-                                    </h4>
+                                    <h4 className="font-bold text-gray-600">{witel}</h4>
 
-                                    {/* TAMBAHKAN LABEL DI SINI */}
-                                    <div className="grid grid-cols-4 gap-2 mt-2 mb-1 px-1">
-                                        {products.map((p) => (
-                                            <label
-                                                key={p.key}
-                                                className="text-xs font-semibold text-gray-500"
-                                            >
-                                                {p.label}
-                                            </label>
-                                        ))}
+                                    {/* [PERBAIKAN 1] */}
+                                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mt-2 mb-1 px-1">
+                                        {products.map((p) => <label key={p.key} className="text-xs font-semibold text-gray-500">{p.label}</label>)}
                                     </div>
 
-                                    <div className="grid grid-cols-4 gap-2">
+                                    {/* [PERBAIKAN 2] */}
+                                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                                         {products.map((p) => (
                                             <input
-                                                key={p.key}
-                                                type="number"
-                                                value={
-                                                    data.targets[witel]
-                                                        ?.prov_comp?.[p.key] ??
-                                                    ""
-                                                }
-                                                onChange={(e) =>
-                                                    handleInputChange(
-                                                        witel,
-                                                        "prov_comp",
-                                                        p.key,
-                                                        e.target.value,
-                                                    )
-                                                }
-                                                placeholder={p.label}
-                                                className="p-1 border rounded w-full"
+                                                key={p.key} type="number"
+                                                value={data.targets[witel]?.prov_comp?.[p.key] ?? ""}
+                                                onChange={(e) => handleInputChange(witel, "prov_comp", p.key, e.target.value)}
+                                                placeholder={p.label} className="p-1 border rounded w-full"
                                             />
                                         ))}
                                     </div>
@@ -293,48 +250,24 @@ const EditReportForm = ({ currentSegment, reportData, period }) => {
                     )}
 
                     <fieldset className="border rounded-md p-3">
-                        <legend className="text-base font-semibold px-2">
-                            Revenue Targets (Rp Juta)
-                        </legend>
+                        <legend className="text-base font-semibold px-2">Revenue Targets (Rp Juta)</legend>
                         {witelList.map((witel) => (
                             <div key={`${witel}-rev`} className="mb-3">
-                                <h4 className="font-bold text-gray-600">
-                                    {witel}
-                                </h4>
+                                <h4 className="font-bold text-gray-600">{witel}</h4>
 
-                                {/* TAMBAHKAN LABEL DI SINI JUGA */}
-                                <div className="grid grid-cols-4 gap-2 mt-2 mb-1 px-1">
-                                    {products.map((p) => (
-                                        <label
-                                            key={p.key}
-                                            className="text-xs font-semibold text-gray-500"
-                                        >
-                                            {p.label}
-                                        </label>
-                                    ))}
+                                {/* [PERBAIKAN 3] */}
+                                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mt-2 mb-1 px-1">
+                                    {products.map((p) => <label key={p.key} className="text-xs font-semibold text-gray-500">{p.label}</label>)}
                                 </div>
 
-                                <div className="grid grid-cols-4 gap-2">
+                                {/* [PERBAIKAN 4] */}
+                                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                                     {products.map((p) => (
                                         <input
-                                            key={p.key}
-                                            type="number"
-                                            step="0.01"
-                                            value={
-                                                data.targets[witel]?.revenue?.[
-                                                p.key
-                                                ] ?? ""
-                                            }
-                                            onChange={(e) =>
-                                                handleInputChange(
-                                                    witel,
-                                                    "revenue",
-                                                    p.key,
-                                                    e.target.value,
-                                                )
-                                            }
-                                            placeholder={p.label}
-                                            className="p-1 border rounded w-full"
+                                            key={p.key} type="number" step="0.01"
+                                            value={data.targets[witel]?.revenue?.[p.key] ?? ""}
+                                            onChange={(e) => handleInputChange(witel, "revenue", p.key, e.target.value)}
+                                            placeholder={p.label} className="p-1 border rounded w-full"
                                         />
                                     ))}
                                 </div>
@@ -342,11 +275,7 @@ const EditReportForm = ({ currentSegment, reportData, period }) => {
                         ))}
                     </fieldset>
 
-                    <button
-                        type="submit"
-                        disabled={processing}
-                        className="w-full mt-4 px-4 py-2 bg-blue-600 text-white font-semibold rounded-md hover:bg-blue-700 disabled:bg-blue-400"
-                    >
+                    <button type="submit" disabled={processing} className="w-full mt-4 px-4 py-2 bg-blue-600 text-white font-semibold rounded-md hover:bg-blue-700 disabled:bg-blue-400">
                         {processing ? "Menyimpan..." : "Simpan Target"}
                     </button>
                 </div>
@@ -385,12 +314,12 @@ const AgentFormModal = ({ isOpen, onClose, agent }) => {
         };
 
         if (agent) {
-            put(route("account-officers.update", agent.id), {
+            put(route("admin.account-officers.update", agent.id), {
                 onSuccess,
                 preserveScroll: true,
             });
         } else {
-            post(route("account-officers.store"), {
+            post(route("admin.account-officers.store"), {
                 onSuccess,
                 preserveScroll: true,
             });
@@ -975,7 +904,7 @@ const InProgressTable = ({
 
         if (result.isConfirmed) {
             router.put(
-                route("manual.update.complete", { order_id: orderId }),
+                route("admin.manual.update.complete", { order_id: orderId }),
                 {},
                 {
                     preserveScroll: true,
@@ -1002,7 +931,7 @@ const InProgressTable = ({
 
         if (result.isConfirmed) {
             router.put(
-                route("manual.update.cancel", { order_id: orderId }),
+                route("admin.manual.update.cancel", { order_id: orderId }),
                 {},
                 {
                     preserveScroll: true,
@@ -1120,7 +1049,7 @@ const CompleteTable = ({ dataPaginator = { data: [], links: [] } }) => {
 
         if (result.isConfirmed) {
             router.put(
-                route("complete.update.progress", { documentData: orderId }),
+                route("admin.complete.update.progress", { documentData: orderId }),
                 {},
                 {
                     preserveScroll: true,
@@ -1147,7 +1076,7 @@ const CompleteTable = ({ dataPaginator = { data: [], links: [] } }) => {
 
         if (result.isConfirmed) {
             router.put(
-                route("complete.update.cancel", { documentData: orderId }),
+                route("admin.complete.update.cancel", { documentData: orderId }),
                 {},
                 {
                     preserveScroll: true,
@@ -1179,7 +1108,7 @@ const CompleteTable = ({ dataPaginator = { data: [], links: [] } }) => {
 
         if (result.isConfirmed) {
             router.put(
-                route("complete.update.qc", { documentData: orderId }),
+                route("admin.complete.update.qc", { documentData: orderId }),
                 {},
                 {
                     preserveScroll: true,
@@ -1308,7 +1237,7 @@ const QcTable = ({ dataPaginator = { data: [], links: [], from: 0 } }) => {
 
         if (result.isConfirmed) {
             router.put(
-                route("complete.update.progress", { documentData: orderId }),
+                route("admin.complete.update.progress", { documentData: orderId }),
                 {},
                 {
                     preserveScroll: true,
@@ -1334,7 +1263,7 @@ const QcTable = ({ dataPaginator = { data: [], links: [], from: 0 } }) => {
         });
         if (result.isConfirmed) {
             router.put(
-                route("qc.update.done", { order_id: orderId }),
+                route("admin.qc.update.done", { order_id: orderId }),
                 {},
                 {
                     preserveScroll: true,
@@ -1360,7 +1289,7 @@ const QcTable = ({ dataPaginator = { data: [], links: [], from: 0 } }) => {
         });
         if (result.isConfirmed) {
             router.put(
-                route("qc.update.cancel", { order_id: orderId }),
+                route("admin.qc.update.cancel", { order_id: orderId }),
                 {},
                 {
                     preserveScroll: true,
@@ -1388,9 +1317,8 @@ const QcTable = ({ dataPaginator = { data: [], links: [], from: 0 } }) => {
                     <tbody className="divide-y bg-white">
                         {dataPaginator.data.length > 0 ? (
                             dataPaginator.data.map((item, index) => (
-                                // [FIX] Tambahkan key={item.id} yang unik pada elemen <tr>
                                 <tr
-                                    key={item.id}
+                                    key={item.id ?? item.order_id} // <-- PERBAIKAN DI SINI
                                     className="text-gray-700 hover:bg-gray-50"
                                 >
                                     <td className="p-3">
@@ -1443,14 +1371,7 @@ const QcTable = ({ dataPaginator = { data: [], links: [], from: 0 } }) => {
                                 </tr>
                             ))
                         ) : (
-                            <tr>
-                                <td
-                                    colSpan="8"
-                                    className="p-4 text-center text-gray-500"
-                                >
-                                    Tidak ada data QC saat ini.
-                                </td>
-                            </tr>
+                            <tr><td colSpan="8" className="p-4 text-center text-gray-500">Tidak ada data QC saat ini.</td></tr>
                         )}
                     </tbody>
                 </table>
@@ -1790,21 +1711,31 @@ const TableConfigurator = ({
     ]);
 
     const handleResetConfig = async () => {
-        const result = await MySwal.fire({ // <-- Ganti confirm
+        const result = await MySwal.fire({
             title: 'Anda Yakin?',
-            text: "Semua kolom tambahan, urutan, dan perubahan warna akan hilang. Aksi ini tidak dapat dibatalkan.",
+            text: "Tampilan tabel akan kembali ke pengaturan default. Aksi ini tidak dapat dibatalkan.",
             icon: 'warning',
             showCancelButton: true,
-            confirmButtonColor: '#3085d6',
-            cancelButtonColor: '#d33',
+            confirmButtonColor: '#d33',
+            cancelButtonColor: '#3085d6',
             confirmButtonText: 'Ya, reset tampilan!',
             cancelButtonText: 'Batal'
         });
 
-        if (result.isConfirmed) { // <-- Cek konfirmasi
-            const storageKey = `userTableConfig_${currentSegment}`;
-            localStorage.removeItem(storageKey);
-            window.location.reload();
+        if (result.isConfirmed) {
+            // [GANTI LOGIKA INI]
+            // Hapus: localStorage.removeItem(`userTableConfig_${currentSegment}`);
+            // Hapus: window.location.reload();
+
+            // [TAMBAHKAN LOGIKA BARU INI]
+            // Kirim permintaan POST ke rute reset yang baru kita buat
+            router.post(route("admin.analysisDigitalProduct.resetConfig"), {
+                page_name: `analysis_digital_${currentSegment.toLowerCase()}`
+            }, {
+                preserveScroll: true,
+                // onSuccess callback tidak lagi diperlukan di sini, karena pesan sukses
+                // akan ditangani oleh 'flash' message dari backend.
+            });
         }
     };
 
@@ -1910,9 +1841,9 @@ const TableConfigurator = ({
         if (formState.mode === "group-column") {
             const newGroupObject = {
                 groupTitle: formState.columnTitle,
-                groupClass: "bg-purple-600",
-                columnClass: "bg-purple-500", // Warna turunan default
-                subColumnClass: "bg-purple-400", // Warna turunan default
+                groupClass: "bg-gray-600",
+                columnClass: "bg-gray-500", // Warna turunan default
+                subColumnClass: "bg-gray-400", // Warna turunan default
                 columns: [
                     {
                         key: `_${formState.initialSubColumnTitle.toLowerCase().replace(/\s+/g, "_")}`,
@@ -2943,8 +2874,8 @@ const legsTableConfigTemplate = [
     },
     {
         groupTitle: "Grand Total",
-        groupClass: "bg-purple-600",
-        columnClass: "bg-purple-500",
+        groupClass: "bg-gray-600",
+        columnClass: "bg-gray-500",
         columns: [
             {
                 key: "grand_total_realisasi_legs",
@@ -3007,7 +2938,7 @@ const CustomTargetForm = ({
 
     function submit(e) {
         e.preventDefault();
-        post(route("analysisDigitalProduct.saveCustomTargets"), {
+        post(route("admin.analysisDigitalProduct.saveCustomTargets"), {
             preserveScroll: true,
         });
     }
@@ -3046,8 +2977,8 @@ const CustomTargetForm = ({
                             <legend className="text-base font-semibold px-2">
                                 {col.title}
                             </legend>
-                            {/* [FIX] Kelas grid diubah agar lebih rapi */}
-                            <div className="grid grid-cols-2 md:grid-cols-3 gap-4 p-2">
+                            {/* [PERBAIKAN] Menggunakan kelas grid responsif */}
+                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 p-2">
                                 {witelList.map((witel) => (
                                     <div key={witel}>
                                         <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -3161,6 +3092,37 @@ export default function AnalysisDigitalProduct({
     //     }
     // }, [tableConfig]);
 
+    const [localFilters, setLocalFilters] = useState({
+        period: filters.period || '',
+        segment: filters.segment || 'SME',
+    });
+
+    useEffect(() => {
+        // Gunakan debounce untuk mencegah request berlebihan jika user mengganti filter dengan cepat
+        const debouncedFilter = debounce(() => {
+            const query = { ...filters, ...localFilters }; // Gabungkan filter lama dan baru
+
+            // Hapus parameter kosong agar URL bersih
+            Object.keys(query).forEach(key => {
+                if (query[key] === '' || query[key] === null || query[key] === undefined) {
+                    delete query[key];
+                }
+            });
+
+            router.get(route('admin.analysisDigitalProduct.index'), query, {
+                preserveState: true,
+                preserveScroll: true,
+                replace: true,
+            });
+        }, 300); // Tunggu 300ms setelah user berhenti mengubah filter
+
+        debouncedFilter();
+
+        // Cleanup function untuk debounce
+        return () => debouncedFilter.cancel();
+
+    }, [localFilters]);
+
     useEffect(() => {
         if (flash.success) {
             toast.success(flash.success);
@@ -3177,31 +3139,28 @@ export default function AnalysisDigitalProduct({
     // useEffect untuk SINKRONISASI state dengan props dari server dan localStorage
     useEffect(() => {
         const storageKey = `userTableConfig_${currentSegment}`;
-        const localConfigString = localStorage.getItem(storageKey);
         const defaultConfig = currentSegment === 'SME' ? smeTableConfigTemplate : legsTableConfigTemplate;
 
-        let newConfig = defaultConfig; // Mulai dengan default
-
-        // Prioritas 1: Gunakan data dari server jika ada
+        // [LOGIKA UTAMA] Jika server mengirimkan konfigurasi, maka itu adalah sumber kebenaran.
         if (savedTableConfig && Array.isArray(savedTableConfig) && savedTableConfig.length > 0) {
             console.log(`[SYNC] Menggunakan konfigurasi dari database untuk segmen: ${currentSegment}`);
-            newConfig = savedTableConfig;
+            setTableConfig(savedTableConfig);
+
+            // Selalu sinkronkan localStorage dengan data terbaru dari server
+            localStorage.setItem(storageKey, JSON.stringify(savedTableConfig));
         }
-        // Prioritas 2: Jika tidak ada dari server, coba ambil dari localStorage
-        else if (localConfigString) {
-            try {
-                console.log(`[SYNC] Menggunakan konfigurasi dari localStorage untuk segmen: ${currentSegment}`);
-                newConfig = JSON.parse(localConfigString);
-            } catch (e) {
-                console.error("Gagal parse config dari localStorage", e);
-            }
-        } else {
+        // [LOGIKA FALLBACK] Jika server TIDAK mengirimkan konfigurasi (setelah reset atau saat pertama kali),
+        // maka kita WAJIB menggunakan template default.
+        else {
             console.log(`[SYNC] Menggunakan konfigurasi default untuk segmen: ${currentSegment}`);
+            setTableConfig(defaultConfig);
+
+            // [PENTING] Hapus kunci localStorage yang lama untuk mencegah masalah ini terjadi lagi.
+            localStorage.removeItem(storageKey);
         }
 
-        setTableConfig(newConfig);
-
-    }, [currentSegment, savedTableConfig]); // <-- KUNCI UTAMA: Jalankan efek ini setiap kali segmen atau data dari server berubah
+        // Dependency array ini sudah benar, jangan diubah.
+    }, [currentSegment, savedTableConfig]);  // <-- KUNCI UTAMA: Jalankan efek ini setiap kali segmen atau data dari server berubah
 
     // useEffect untuk MENYIMPAN perubahan lokal ke localStorage (TETAP DIPERLUKAN)
     useEffect(() => {
@@ -3221,7 +3180,7 @@ export default function AnalysisDigitalProduct({
         const pageName = `analysis_digital_${currentSegment.toLowerCase()}`;
 
         router.post(
-            route("analysisDigitalProduct.saveConfig"),
+            route("admin.analysisDigitalProduct.saveConfig"),
             {
                 configuration: tableConfig,
                 page_name: pageName,
@@ -3261,7 +3220,7 @@ export default function AnalysisDigitalProduct({
     const handleExportReport = () => {
         const form = document.createElement("form");
         form.method = "POST";
-        form.action = route("analysisDigitalProduct.export.report");
+        form.action = route("admin.analysisDigitalProduct.export.report");
         form.style.display = "none";
 
         const csrfToken = document
@@ -3328,7 +3287,7 @@ export default function AnalysisDigitalProduct({
             setProgressStates((prev) => ({ ...prev, [jobType]: 0 }));
             const interval = setInterval(() => {
                 axios
-                    .get(route("import.progress", { batchId }))
+                    .get(route("admin.import.progress", { batchId }))
                     .then((response) => {
                         const progress = response.data.progress;
                         setProgressStates((prev) => ({
@@ -3391,7 +3350,7 @@ export default function AnalysisDigitalProduct({
 
     const submitCompleteFile = (e) => {
         e.preventDefault();
-        postComplete(route("analysisDigitalProduct.uploadComplete"), {
+        postComplete(route("admin.analysisDigitalProduct.uploadComplete"), {
             onSuccess: () => {
                 completeReset("complete_document");
             },
@@ -3400,7 +3359,7 @@ export default function AnalysisDigitalProduct({
 
     const submitCancelFile = (e) => {
         e.preventDefault();
-        postCancel(route("analysisDigitalProduct.uploadCancel"), {
+        postCancel(route("admin.analysisDigitalProduct.uploadCancel"), {
             onSuccess: () => cancelReset("cancel_document"),
         });
     };
@@ -3412,7 +3371,7 @@ export default function AnalysisDigitalProduct({
             )
         ) {
             router.post(
-                route("analysisDigitalProduct.syncCompletedOrders"),
+                route("admin.analysisDigitalProduct.syncCompletedOrders"),
                 {},
                 {
                     preserveScroll: true,
@@ -3427,7 +3386,7 @@ export default function AnalysisDigitalProduct({
             )
         ) {
             router.post(
-                route("analysisDigitalProduct.syncCancel"),
+                route("admin.analysisDigitalProduct.syncCancel"),
                 {},
                 { preserveScroll: true },
             );
@@ -3470,7 +3429,7 @@ export default function AnalysisDigitalProduct({
             }
         });
 
-        router.get(route("analysisDigitalProduct.index"), query, {
+        router.get(route("admin.analysisDigitalProduct.index"), query, {
             preserveState: true,
             preserveScroll: true,
             replace: true,
@@ -3494,7 +3453,7 @@ export default function AnalysisDigitalProduct({
 
     function handleUploadSubmit(e) {
         e.preventDefault();
-        postUpload(route("analysisDigitalProduct.upload"));
+        postUpload(route("admin.analysisDigitalProduct.upload"));
     }
 
     const exportUrl = useMemo(() => {
@@ -3505,7 +3464,7 @@ export default function AnalysisDigitalProduct({
         if (selectedWitel) {
             params.append("witel", selectedWitel);
         }
-        return `${route("analysisDigitalProduct.export.inprogress")}?${params.toString()}`;
+        return `${route("admin.analysisDigitalProduct.export.inprogress")}?${params.toString()}`;
     }, [currentSegment, currentInProgressYear, selectedWitel]);
 
     function handleWitelChange(e) {
@@ -3597,7 +3556,7 @@ export default function AnalysisDigitalProduct({
 
         if (result.isConfirmed) {
             router.post(
-                route("analysisDigitalProduct.clearHistory"),
+                route("admin.analysisDigitalProduct.clearHistory"),
                 {},
                 {
                     preserveScroll: true,
@@ -3677,15 +3636,15 @@ export default function AnalysisDigitalProduct({
                                     />
                                 </div>
                                 <select
-                                    value={period}
-                                    onChange={handlePeriodChange}
+                                    value={localFilters.period} // Gunakan state lokal
+                                    onChange={(e) => setLocalFilters(prev => ({ ...prev, period: e.target.value }))} // Update state lokal
                                     className="border border-gray-300 rounded-md text-sm p-2"
                                 >
                                     {generatePeriodOptions()}
                                 </select>
                                 <select
-                                    value={currentSegment}
-                                    onChange={handleSegmentChange}
+                                    value={localFilters.segment} // Gunakan state lokal
+                                    onChange={(e) => setLocalFilters(prev => ({ ...prev, segment: e.target.value }))} // Update state lokal
                                     className="border border-gray-300 rounded-md text-sm p-2"
                                 >
                                     <option value="LEGS">LEGS</option>
@@ -3796,27 +3755,21 @@ export default function AnalysisDigitalProduct({
                             {activeDetailView === "history" && (
                                 <div className="w-full md:w-auto flex items-center gap-2">
                                     <a
-                                        href={route(
-                                            "analysisDigitalProduct.export.history",
-                                        )}
+                                        href={route("admin.analysisDigitalProduct.export.history")}
                                         className="w-full px-4 py-2 text-sm font-bold text-white bg-green-600 rounded-md hover:bg-green-700 focus:outline-none"
                                     >
                                         Export Excel
                                     </a>
-                                    <button
-                                        onClick={handleClearHistory}
-                                        className="w-full px-4 py-2 text-sm font-bold text-white bg-red-600 rounded-md hover:bg-red-700 focus:outline-none"
-                                    >
+                                    <button onClick={handleClearHistory} className="w-full px-4 py-2 text-sm font-bold text-white bg-red-600 rounded-md hover:bg-red-700 focus:outline-none">
                                         Clear History
                                     </button>
                                 </div>
                             )}
+
                             {activeDetailView === "kpi" && (
                                 <div className="w-full md:w-auto">
                                     <a
-                                        href={route(
-                                            "analysisDigitalProduct.export.kpiPo",
-                                        )}
+                                        href={route("admin.analysisDigitalProduct.export.kpiPo")}
                                         className="inline-block px-4 py-2 text-sm font-bold text-white bg-green-600 rounded-md hover:bg-green-700"
                                     >
                                         Ekspor Excel

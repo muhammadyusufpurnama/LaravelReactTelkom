@@ -2,149 +2,113 @@
 
 namespace App\Http\Controllers;
 
-use Illuminate\Http\Request;
-use Inertia\Inertia;
 use App\Models\DocumentData;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
-use Carbon\Carbon;
+use Inertia\Inertia;
 
 class DashboardDigitalProductController extends Controller
 {
     public function index(Request $request)
     {
-        // Validasi dan set default untuk filter
+        // 1. [PERBAIKAN] Validasi filter untuk menerima array
         $validated = $request->validate([
-            'period' => 'nullable|date_format:Y-m',
-            'limit' => 'nullable|in:10,30,100,500',
+            'startDate' => 'nullable|date_format:Y-m-d',
+            'endDate' => 'nullable|date_format:Y-m-d|after_or_equal:startDate',
+            'products' => 'nullable|array', 'products.*' => 'string|max:255',
+            'witels' => 'nullable|array', 'witels.*' => 'string|max:255',
+            'subTypes' => 'nullable|array', 'subTypes.*' => 'string|in:AO,SO,DO,MO,RO',
+            'branches' => 'nullable|array', 'branches.*' => 'string|max:255',
+            'limit' => 'nullable|in:10,50,100,500',
         ]);
-        $period = $validated['period'] ?? Carbon::now()->format('Y-m');
-        $date = Carbon::parse($period);
         $limit = $validated['limit'] ?? '10';
 
+        $initialStartDate = now()->startOfYear()->format('Y-m-d');
+        $latestOrderDate = DocumentData::max('order_date');
+        $initialEndDate = $latestOrderDate ? \Carbon\Carbon::parse($latestOrderDate)->format('Y-m-d') : now()->format('Y-m-d');
+
+        $startDateToUse = $request->input('startDate', $initialStartDate);
+        $endDateToUse = $request->input('endDate', $initialEndDate);
+
+        // Daftar opsi filter (tidak berubah)
         $products = ['Netmonk', 'OCA', 'Antares Eazy', 'Pijar'];
-        $witelList = ['BALI', 'JATIM BARAT', 'JATIM TIMUR', 'NUSA TENGGARA', 'SURAMADU'];
+        $subTypes = ['AO', 'SO', 'DO', 'MO', 'RO'];
+        $witelList = DocumentData::query()->select('nama_witel')->whereNotNull('nama_witel')->distinct()->orderBy('nama_witel')->pluck('nama_witel');
+        $branchList = DocumentData::query()->select('telda')->whereNotNull('telda')->distinct()->orderBy('telda')->pluck('telda');
+
+        // CASE statements untuk produk dan sub-type (tidak berubah)
+        $productCaseStatement = 'CASE '.
+            "WHEN UPPER(TRIM(product)) LIKE 'NETMONK%' THEN 'Netmonk' ".
+            "WHEN UPPER(TRIM(product)) LIKE 'OCA%' THEN 'OCA' ".
+            "WHEN UPPER(TRIM(product)) LIKE 'ANTARES EAZY%' THEN 'Antares Eazy' ".
+            "WHEN UPPER(TRIM(product)) LIKE 'PIJAR%' THEN 'Pijar' ".
+            'ELSE NULL END';
 
         $subTypeMapping = [
-            'AO' => ['New Install', 'ADD SERVICE', 'NEW SALES'],
-            'MO' => ['MODIFICATION', 'Modify'],
-            'SO' => ['Suspend'],
-            'DO' => ['Disconnect'],
-            'RO' => ['Resume'],
+            'AO' => ['New Install', 'ADD SERVICE', 'NEW SALES'], 'MO' => ['MODIFICATION', 'Modify'],
+            'SO' => ['Suspend'], 'DO' => ['Disconnect'], 'RO' => ['Resume'],
         ];
-
-        $caseStatement = "CASE ";
-        foreach ($subTypeMapping as $group => $subTypes) {
-            $escapedSubTypes = array_map(fn($v) => str_replace("'", "''", strtoupper(trim($v))), $subTypes);
-            $inClause = implode("', '", $escapedSubTypes);
-            $caseStatement .= "WHEN UPPER(TRIM(order_sub_type)) IN ('" . $inClause . "') THEN '" . $group . "' ";
+        $subTypeCaseStatement = 'CASE ';
+        foreach ($subTypeMapping as $group => $types) {
+            $inClause = implode("', '", array_map(fn ($v) => strtoupper(trim($v)), $types));
+            $subTypeCaseStatement .= "WHEN UPPER(TRIM(order_sub_type)) IN ('".$inClause."') THEN '".$group."' ";
         }
-        $caseStatement .= "ELSE NULL END";
+        $subTypeCaseStatement .= 'ELSE NULL END';
+
+        // [PERBAIKAN] Fungsi closure untuk filter global yang menangani array
+        $applyFilters = function ($query) use ($startDateToUse, $endDateToUse, $validated, $subTypeCaseStatement, $productCaseStatement) {
+            $query
+                // Selalu terapkan filter tanggal
+                ->whereBetween('order_date', [$startDateToUse.' 00:00:00', $endDateToUse.' 23:59:59'])
+
+                // Terapkan filter lain jika ada
+                ->when($validated['products'] ?? null, fn ($q, $p) => $q->whereIn(DB::raw($productCaseStatement), $p))
+                ->when($validated['witels'] ?? null, fn ($q, $w) => $q->whereIn('nama_witel', $w))
+                ->when($validated['branches'] ?? null, fn ($q, $b) => $q->whereIn('telda', $b))
+                ->when($validated['subTypes'] ?? null, fn ($q, $st) => $q->whereIn(DB::raw($subTypeCaseStatement), $st));
+        };
+
+        // Semua query di bawah ini akan menggunakan closure $applyFilters yang baru
+        // dan tidak perlu diubah sama sekali.
 
         // --- Query untuk Revenue by Sub-type ---
-        $revenueBySubTypeQuery = DocumentData::query()
-            ->select(
-                DB::raw($caseStatement . " as sub_type"),
-                DB::raw('TRIM(UPPER(product)) as product'),
-                DB::raw('SUM(net_price) as total_revenue')
-            )
-            ->whereNotNull(DB::raw($caseStatement))
-            ->where('net_price', '>', 0) // <-- Ini penyebab 'Pijar' tidak muncul jika harganya 0
-            ->whereIn(DB::raw('TRIM(UPPER(product))'), array_map('strtoupper', $products))
-            ->whereYear('order_date', $date->year)
-            ->whereMonth('order_date', $date->month)
-            ->groupBy('sub_type', DB::raw('TRIM(UPPER(product))'));
+        $revenueBySubTypeData = DocumentData::query()
+            ->select(DB::raw($subTypeCaseStatement.' as sub_type'), DB::raw($productCaseStatement.' as product'), DB::raw('SUM(net_price) as total_revenue'))
+            ->whereNotNull(DB::raw($productCaseStatement))->whereNotNull(DB::raw($subTypeCaseStatement))->where('net_price', '>', 0)
+            ->groupBy('sub_type', 'product')->tap($applyFilters)->get();
 
-        $revenueBySubTypeData = $revenueBySubTypeQuery->get()->map(function ($item) use ($products) {
-            foreach ($products as $p) {
-                if (strtoupper($p) === $item->product) {
-                    $item->product = $p;
-                    break;
-                }
-            }
-            return $item;
-        });
+        // --- Query untuk Amount by Sub-type ---
+        $amountBySubTypeData = DocumentData::query()
+            ->select(DB::raw($subTypeCaseStatement.' as sub_type'), DB::raw($productCaseStatement.' as product'), DB::raw('COUNT(*) as total_amount'))
+            ->whereNotNull(DB::raw($productCaseStatement))->whereNotNull(DB::raw($subTypeCaseStatement))
+            ->groupBy('sub_type', 'product')->tap($applyFilters)->get();
 
-        // --- [FIX] Query untuk Amount by Sub-type dikembalikan ke format yang benar ---
-        $amountBySubTypeQuery = DocumentData::query()
-            ->select(
-                DB::raw($caseStatement . " as sub_type"),
-                DB::raw('TRIM(UPPER(product)) as product'),
-                DB::raw('COUNT(*) as total_amount') // Menghitung jumlah, bukan harga
-            )
-            ->whereNotNull(DB::raw($caseStatement))
-            // Tidak ada filter harga, jadi 'Pijar' dengan harga 0 akan terhitung
-            ->whereIn(DB::raw('TRIM(UPPER(product))'), array_map('strtoupper', $products))
-            ->whereYear('order_date', $date->year)
-            ->whereMonth('order_date', $date->month)
-            ->groupBy('sub_type', DB::raw('TRIM(UPPER(product))'));
-
-        $amountBySubTypeData = $amountBySubTypeQuery->get()->map(function ($item) use ($products) {
-            foreach ($products as $p) {
-                if (strtoupper($p) === $item->product) {
-                    $item->product = $p;
-                    break;
-                }
-            }
-            return $item;
-        });
-
-        $allSubTypes = collect([
-            ['sub_type' => 'AO', 'total' => 0],
-            ['sub_type' => 'SO', 'total' => 0],
-            ['sub_type' => 'DO', 'total' => 0],
-            ['sub_type' => 'MO', 'total' => 0],
-            ['sub_type' => 'RO', 'total' => 0],
-        ]);
-
-        $existingSubTypeCounts = DocumentData::query()
-            ->select(
-                DB::raw($caseStatement . " as sub_type"),
-                DB::raw('COUNT(*) as total')
-            )
-            ->whereNotNull(DB::raw($caseStatement))
-            ->whereYear('order_date', $date->year)
-            ->whereMonth('order_date', $date->month)
-            ->groupBy('sub_type')
-            ->get()
-            ->keyBy('sub_type'); // Jadikan sub_type sebagai key untuk kemudahan merge
-
-        // Gabungkan data yang ada dengan daftar lengkap
+        // --- Query lainnya (Session, Radar, Pie, Preview) ---
+        // (Tidak perlu ada perubahan di sini karena mereka sudah menggunakan ->tap($applyFilters))
+        $sessionBySubTypeQuery = DocumentData::query()
+            ->select(DB::raw($subTypeCaseStatement.' as sub_type'), DB::raw('COUNT(*) as total'))
+            ->whereNotNull(DB::raw($subTypeCaseStatement))->groupBy('sub_type')->tap($applyFilters);
+        $existingSubTypeCounts = $sessionBySubTypeQuery->get()->keyBy('sub_type');
+        $allSubTypes = collect($subTypes)->map(fn ($st) => ['sub_type' => $st, 'total' => 0]);
         $sessionBySubType = $allSubTypes->map(function ($item) use ($existingSubTypeCounts) {
             if ($existingSubTypeCounts->has($item['sub_type'])) {
                 $item['total'] = $existingSubTypeCounts->get($item['sub_type'])['total'];
             }
+
             return $item;
         });
 
         $productRadarData = DocumentData::query()
-            ->select(
-                'nama_witel',
-                ...collect($products)->map(function ($product) { // [UBAH] Gunakan variabel $products
-                    return DB::raw("SUM(CASE WHEN product = '{$product}' THEN 1 ELSE 0 END) as `{$product}`");
-                })
-            )
-            ->whereIn('nama_witel', $witelList)
-            ->whereIn('product', $products) // [TAMBAH] Filter berdasarkan produk untuk efisiensi
-            ->whereYear('order_date', $date->year)
-            ->whereMonth('order_date', $date->month)
-            ->groupBy('nama_witel')
-            ->get();
+            ->select('nama_witel', ...collect($products)->map(fn ($p) => DB::raw('SUM(CASE WHEN '.$productCaseStatement." = '{$p}' THEN 1 ELSE 0 END) as `{$p}`")))
+            ->whereNotNull('nama_witel')->whereNotNull(DB::raw($productCaseStatement))
+            ->groupBy('nama_witel')->tap($applyFilters)->get();
 
-        $witelPieData = DocumentData::query()
-            ->select('nama_witel', DB::raw('COUNT(*) as value'))
-            ->whereIn('nama_witel', $witelList)
-            ->whereYear('order_date', $date->year)
-            ->whereMonth('order_date', $date->month)
-            ->groupBy('nama_witel')
-            ->get();
+        $witelPieData = DocumentData::query()->select('nama_witel', DB::raw('COUNT(*) as value'))
+            ->groupBy('nama_witel')->tap($applyFilters)->get();
 
         $dataPreview = DocumentData::query()
-            ->select('order_id', 'product', 'milestone', 'nama_witel', 'status_wfm', 'order_created_date', 'order_date') // Optional: tambahkan 'order_date' jika ingin ditampilkan
-            ->whereYear('order_date', $date->year)
-            ->whereMonth('order_date', $date->month)
-            ->orderBy('order_date', 'desc')
-            ->paginate($limit)
-            ->withQueryString();
+            ->select('order_id', 'product', 'milestone', 'nama_witel', 'status_wfm', 'order_created_date', 'order_date')
+            ->orderBy('order_date', 'desc')->tap($applyFilters)->paginate($limit)->withQueryString();
 
         return Inertia::render('DashboardDigitalProduct', [
             'revenueBySubTypeData' => $revenueBySubTypeData,
@@ -154,10 +118,17 @@ class DashboardDigitalProductController extends Controller
             'witelPieData' => $witelPieData,
             'dataPreview' => $dataPreview,
             'filters' => [
-                'period' => $period,
-                'limit' => $limit,
-            ]
+                'startDate' => $startDateToUse, // Kirim tanggal yang benar-benar digunakan
+                'endDate' => $endDateToUse,     // Kirim tanggal yang benar-benar digunakan
+                'products' => $request->input('products'),
+                'witels' => $request->input('witels'),
+                'subTypes' => $request->input('subTypes'),
+                'branches' => $request->input('branches'),
+                'limit' => $request->input('limit', '10'),
+            ],
+            'filterOptions' => [
+                'products' => $products, 'witelList' => $witelList, 'subTypes' => $subTypes, 'branchList' => $branchList,
+            ],
         ]);
     }
 }
-

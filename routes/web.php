@@ -1,9 +1,9 @@
 <?php
 
 use App\Http\Controllers\AccountOfficerController;
-use App\Http\Controllers\ActionBasedController; // <-- Pastikan ini ada
 use App\Http\Controllers\AnalysisDigitalProductController;
 use App\Http\Controllers\DashboardDigitalProductController;
+use App\Http\Controllers\DataReportController;
 use App\Http\Controllers\GalaksiController;
 use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\UserController;
@@ -14,83 +14,77 @@ use Illuminate\Support\Facades\Route;
 |--------------------------------------------------------------------------
 | Web Routes
 |--------------------------------------------------------------------------
+|
+| Di sini Anda dapat mendaftarkan rute web untuk aplikasi Anda. Rute-rute ini
+| dimuat oleh RouteServiceProvider dan semuanya akan ditetapkan ke
+| grup middleware "web". Buat sesuatu yang hebat!
+|
 */
 
-// --- RUTE PUBLIK ---
-// [DIUBAH] Rute utama sekarang langsung mengalihkan ke halaman login
-Route::get('/', function () {
-    return Redirect::route('login');
-});
+// Rute default, mengarahkan ke halaman login
+Route::get('/', fn () => Redirect::route('login'));
 
 // --- RUTE YANG MEMERLUKAN AUTENTIKASI ---
-// Semua rute di dalam grup ini hanya bisa diakses oleh pengguna yang sudah login
 Route::middleware(['auth', 'verified'])->group(function () {
     /*
     |--------------------------------------------------------------------------
-    | Rute untuk SEMUA Peran (User, Admin, Superadmin)
+    | Rute Umum & Tampilan User
     |--------------------------------------------------------------------------
     */
-    // Dashboard utama (semua role bisa akses, tampilan diatur oleh frontend)
     Route::get('/dashboard', [DashboardDigitalProductController::class, 'index'])->name('dashboard');
     Route::get('/dashboardDigitalProduct', [DashboardDigitalProductController::class, 'index'])->name('dashboardDigitalProduct');
 
-    // Profil (setiap pengguna bisa mengedit profilnya sendiri)
     Route::get('/profile', [ProfileController::class, 'edit'])->name('profile.edit');
     Route::patch('/profile', [ProfileController::class, 'update'])->name('profile.update');
     Route::delete('/profile', [ProfileController::class, 'destroy'])->name('profile.destroy');
 
-    // Progress Bar (kemungkinan dibutuhkan oleh semua role saat import)
-    Route::get('/import-progress/{batchId}', [AnalysisDigitalProductController::class, 'getImportProgress'])->name('import.progress');
-
-    Route::get('/action-based', [ActionBasedController::class, 'index'])->name('action-based.index');
+    Route::get('/data-report', [DataReportController::class, 'index'])->name('data-report.index');
+    Route::get('/data-report/export', [DataReportController::class, 'export'])->name('data-report.export');
+    Route::get('/data-report/export/inprogress', [DataReportController::class, 'exportInProgress'])->name('data-report.exportInProgress');
 
     Route::get('/galaksi', [GalaksiController::class, 'index'])->name('galaksi.index');
 
-    Route::post('/analysis-digital-product/save-config', [AnalysisDigitalProductController::class, 'saveConfig'])->name('analysisDigitalProduct.saveConfig');
-
-    Route::post('/analysis-digital-product/reset-config', [AnalysisDigitalProductController::class, 'resetTableConfig'])->name('analysisDigitalProduct.resetConfig');
-
-    Route::get('/analysis-digital-product/get-config', [AnalysisDigitalProductController::class, 'getTableConfig'])->name('analysisDigitalProduct.getConfig');
+    // Rute Progress Bar (digunakan bersama)
+    Route::get('/import-progress/{batchId}', [AnalysisDigitalProductController::class, 'getImportProgress'])->name('import.progress');
 
     /*
     |--------------------------------------------------------------------------
-    | Rute HANYA untuk Admin & Superadmin
+    | Rute Khusus Admin & Superadmin (Area CMS)
     |--------------------------------------------------------------------------
     */
-    Route::middleware(['role:admin,superadmin'])->group(function () {
-        // Analisis Digital Product
-        Route::prefix('analysisDigitalProduct')->name('analysisDigitalProduct.')->controller(AnalysisDigitalProductController::class)->group(function () {
+    Route::middleware(['role:admin,superadmin'])->prefix('admin')->name('admin.')->group(function () {
+        // Grup Controller untuk Analisis Digital Product
+        Route::controller(AnalysisDigitalProductController::class)->prefix('analysis-digital-product')->name('analysisDigitalProduct.')->group(function () {
             Route::get('/', 'index')->name('index');
             Route::post('/upload', 'upload')->name('upload');
             Route::post('/targets', 'updateTargets')->name('targets');
             Route::post('/upload-complete', 'uploadComplete')->name('uploadComplete');
-            Route::post('/sync-complete', 'syncCompletedOrders')->name('syncComplete');
             Route::post('/upload-cancel', 'uploadCancel')->name('uploadCancel');
-            Route::post('/sync-cancel', 'syncCanceledOrders')->name('syncCancel');
-            Route::get('/export/inprogress', 'exportInProgress')->name('export.inprogress');
-            Route::post('/config', 'saveTableConfig')->name('saveConfig');
+            Route::post('/config', 'saveConfig')->name('saveConfig');
+            Route::post('/reset-config', 'resetTableConfig')->name('resetConfig');
             Route::post('/clear-history', 'clearHistory')->name('clearHistory');
-            Route::get('/export/history', 'exportHistory')->name('export.history');
             Route::post('/export-report', 'exportReport')->name('export.report');
             Route::post('/custom-targets', 'saveCustomTargets')->name('saveCustomTargets');
             Route::get('/export/kpi-po', 'exportKpiPo')->name('export.kpiPo');
+            Route::get('/export/inprogress', 'exportInProgress')->name('export.inprogress');
+            Route::get('/export/history', 'exportHistory')->name('export.history');
         });
 
-        // Account Officers (CRUD)
-        Route::post('/account-officers', [AccountOfficerController::class, 'store'])->name('account-officers.store');
-        Route::put('/account-officers/{officer}', [AccountOfficerController::class, 'update'])->name('account-officers.update');
+        // Rute untuk Analisis SOS
+        Route::get('/analysis-sos', fn () => inertia('Admin/AnalysisSOS'))->name('analysisSOS.index');
 
-        // Manual & QC Update Actions
+        // Rute aksi update manual (menggunakan Route Model Binding)
         Route::put('/manual-update/complete/{documentData:order_id}', [AnalysisDigitalProductController::class, 'updateManualComplete'])->name('manual.update.complete');
         Route::put('/manual-update/cancel/{documentData:order_id}', [AnalysisDigitalProductController::class, 'updateManualCancel'])->name('manual.update.cancel');
-
         Route::put('/complete-update/progress/{documentData:order_id}', [AnalysisDigitalProductController::class, 'updateCompleteToProgress'])->name('complete.update.progress');
         Route::put('/complete-update/qc/{documentData:order_id}', [AnalysisDigitalProductController::class, 'updateCompleteToQc'])->name('complete.update.qc');
         Route::put('/complete-update/cancel/{documentData:order_id}', [AnalysisDigitalProductController::class, 'updateCompleteToCancel'])->name('complete.update.cancel');
-
         Route::put('/qc-update/{documentData:order_id}/progress', [AnalysisDigitalProductController::class, 'updateQcStatusToProgress'])->name('qc.update.progress');
         Route::put('/qc-update/{documentData:order_id}/done', [AnalysisDigitalProductController::class, 'updateQcStatusToDone'])->name('qc.update.done');
         Route::put('/qc-update/{documentData:order_id}/cancel', [AnalysisDigitalProductController::class, 'updateQcStatusToCancel'])->name('qc.update.cancel');
+
+        // Rute Resource untuk Account Officer (hanya store dan update)
+        Route::resource('account-officers', AccountOfficerController::class)->only(['store', 'update']);
     });
 
     /*
@@ -99,11 +93,8 @@ Route::middleware(['auth', 'verified'])->group(function () {
     |--------------------------------------------------------------------------
     */
     Route::middleware(['role:superadmin'])->group(function () {
-        // Rute ini akan membuat semua rute yang dibutuhkan untuk User Management
-        // termasuk GET /users dengan nama 'users.index'
         Route::resource('users', UserController::class);
     });
 });
 
-// Rute Autentikasi Bawaan Laravel (login, register, dll.)
 require __DIR__.'/auth.php';

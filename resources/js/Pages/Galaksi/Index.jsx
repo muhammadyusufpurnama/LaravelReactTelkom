@@ -114,8 +114,6 @@ export default function GalaksiIndex({ auth, kpiData = [], accountOfficers = [] 
                                 <th colSpan="2" className="px-4 py-2 text-center text-xs font-medium text-white uppercase tracking-wider border bg-blue-500">PRODIGI OGP</th>
                                 <th rowSpan="2" className="px-4 py-2 text-center text-xs font-medium text-white uppercase tracking-wider border bg-green-600">TOTAL</th>
                                 <th colSpan="2" className="px-4 py-2 text-center text-xs font-medium text-white uppercase tracking-wider border bg-yellow-400">ACH</th>
-                                {auth.user.role !== 'user' && (
-                                    <th rowSpan="2" className="px-4 py-2 text-center text-xs font-medium text-white uppercase tracking-wider border bg-gray-600">AKSI</th>)}
                             </tr>
                             <tr>
                                 <th className="px-4 py-2 text-center text-xs font-medium text-white uppercase tracking-wider border bg-orange-400">NCX</th>
@@ -139,15 +137,6 @@ export default function GalaksiIndex({ auth, kpiData = [], accountOfficers = [] 
                                     <td className="px-4 py-2 whitespace-nowrap border text-center font-bold">{po.total}</td>
                                     <td className="px-4 py-2 whitespace-nowrap border text-center font-bold bg-yellow-100">{po.ach_ytd}</td>
                                     <td className="px-4 py-2 whitespace-nowrap border text-center font-bold bg-yellow-100">{po.ach_q3}</td>
-                                    {auth.user.role !== 'user' && (
-                                        <td className="px-4 py-2 whitespace-nowrap border text-center">
-                                            <button
-                                                onClick={() => openModal(accountOfficers.find(a => a.id === po.id))}
-                                                className="text-indigo-600 hover:text-indigo-900 text-xs font-semibold"
-                                            >
-                                                Edit
-                                            </button>
-                                        </td>)}
                                 </tr>
                             ))}
                         </tbody>

@@ -1,168 +1,205 @@
-import React, { useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout';
 import { Head, router, Link } from '@inertiajs/react';
-import StatsCard from '@/Components/StatsCard';
-import { FaDollarSign, FaShoppingCart, FaChartPie, FaChartLine, FaUsers } from 'react-icons/fa';
-import { Line } from 'react-chartjs-2';
-import { Chart as ChartJS, CategoryScale, LinearScale, PointElement, LineElement, BarElement, Title, Tooltip, Legend, Filler } from 'chart.js';
+
+// ... (Semua impor lain tetap sama)
 import RevenueBySubTypeChart from '@/Components/RevenueBySubTypeChart';
 import AmountBySubTypeChart from '@/Components/AmountBySubTypeChart';
 import SessionSubTypeChart from '@/Components/SessionSubTypeChart';
 import ProductRadarChart from '@/Components/ProductRadarChart';
 import WitelPieChart from '@/Components/WitelPieChart';
+import { Chart as ChartJS, CategoryScale, LinearScale, PointElement, LineElement, BarElement, Title, Tooltip, Legend, Filler, RadialLinearScale } from 'chart.js';
+import DatePicker from 'react-datepicker';
+import "react-datepicker/dist/react-datepicker.css";
+import DropdownCheckbox from '@/Components/DropdownCheckbox';
 
-import { Radar, RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis, ResponsiveContainer } from 'recharts';
+ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, BarElement, Title, Tooltip, Legend, Filler, RadialLinearScale);
 
-ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, BarElement, Title, Tooltip, Legend, Filler);
-
-// Komponen Badge Status
 const StatusBadge = ({ text, color }) => (
     <span className={`px-2 py-1 text-xs font-semibold leading-tight rounded-full ${color}`}>
         {text}
     </span>
 );
 
-// [PERBAIKAN] Menambahkan nilai default `{}` untuk prop 'filters'
-export default function DashboardDigitalProduct({ auth, revenueBySubTypeData, amountBySubTypeData, dataPreview, sessionBySubType, productRadarData, witelPieData, filters = {} }) {
+export default function DashboardDigitalProduct({
+    auth, revenueBySubTypeData, amountBySubTypeData, dataPreview, sessionBySubType, productRadarData, witelPieData, filters = {}, filterOptions = {}
+}) {
+    // --- STATE MANAGEMENT ---
+    const productOptions = useMemo(() => filterOptions.products || [], [filterOptions.products]);
+    const witelOptions = useMemo(() => filterOptions.witelList || [], [filterOptions.witelList]);
+    const subTypeOptions = useMemo(() => filterOptions.subTypes || [], [filterOptions.subTypes]);
+    const branchOptions = useMemo(() => filterOptions.branchList || [], [filterOptions.branchList]);
 
-    const products = [
-        { name: 'Netmonk', color: '#8884d8' },
-        { name: 'OCA', color: '#82ca9d' },
-        { name: 'Antares Eazy', color: '#ffc658' },
-        { name: 'Pijar', color: '#ff8042' },
-    ];
+    const [localFilters, setLocalFilters] = useState({
+        products: [], witels: [], subTypes: [], branches: [],
+        startDate: null, endDate: null,
+    });
 
-    const transformedRadarData = useMemo(() => {
-        if (!productRadarData || productRadarData.length === 0) return [];
-        const productNames = ['Netmonk', 'OCA', 'Antares Eazy', 'Pijar']; // <-- Perubahan di sini
-        return productNames.map(product => {
-            const entry = { product_name: product };
-            productRadarData.forEach(witelData => {
-                entry[witelData.nama_witel] = witelData[product];
-            });
-            return entry;
+    const [revenueFilters, setRevenueFilters] = useState({ products: productOptions });
+    const [amountFilters, setAmountFilters] = useState({ products: productOptions });
+    const [radarFilters, setRadarFilters] = useState({ products: productOptions, witels: witelOptions });
+    const [pieFilters, setPieFilters] = useState({ products: productOptions, witels: witelOptions });
+
+    useEffect(() => {
+        setLocalFilters({
+            products: filters.products && Array.isArray(filters.products) ? filters.products : productOptions,
+            witels: filters.witels && Array.isArray(filters.witels) ? filters.witels : witelOptions,
+            subTypes: filters.subTypes && Array.isArray(filters.subTypes) ? filters.subTypes : subTypeOptions,
+            branches: filters.branches && Array.isArray(filters.branches) ? filters.branches : branchOptions,
+
+            // Logika ini sekarang akan selalu menerima tanggal dari 'filters'
+            startDate: filters.startDate ? new Date(`${filters.startDate}T00:00:00`) : null,
+            endDate: filters.endDate ? new Date(`${filters.endDate}T00:00:00`) : null,
         });
-    }, [productRadarData]);
 
-    const generatePeriodOptions = () => {
-        const options = [];
-        let date = new Date();
-        for (let i = 0; i < 24; i++) {
-            const year = date.getFullYear();
-            const month = (date.getMonth() + 1).toString().padStart(2, '0');
-            const value = `${year}-${month}`;
-            const label = date.toLocaleString('id-ID', { month: 'long', year: 'numeric' });
-            options.push(<option key={value} value={value}>{label}</option>);
-            date.setMonth(date.getMonth() - 1);
-        }
-        return options;
+        // Bagian ini tetap sama
+        setRevenueFilters({ products: productOptions });
+        setAmountFilters({ products: productOptions });
+        setRadarFilters({ products: productOptions, witels: witelOptions });
+        setPieFilters({ products: productOptions, witels: witelOptions });
+
+    }, [filters, productOptions, witelOptions, subTypeOptions, branchOptions]);
+
+    // --- FUNGSI HANDLER ---
+
+    // [MODIFIKASI 1] Buat fungsi helper untuk format tanggal yang aman dari timezone
+    const formatDateForQuery = (date) => {
+        if (!date) return undefined;
+        const year = date.getFullYear();
+        // getMonth() dimulai dari 0 (Januari), jadi perlu +1
+        const month = (date.getMonth() + 1).toString().padStart(2, '0');
+        const day = date.getDate().toString().padStart(2, '0');
+        return `${year}-${month}-${day}`;
     };
 
-    // Fungsi untuk menangani perubahan filter
-    function handleFilterChange(key, value) {
-        router.get(route('dashboardDigitalProduct'), {
-            ...filters,
-            [key]: value,
-        }, {
+    const applyFilters = () => {
+        const queryParams = {
+            // [MODIFIKASI UTAMA]
+            // Kirim array langsung. Inertia akan otomatis mengubahnya menjadi format `nama[]=nilai`.
+            // Jika semua item terpilih (panjang array sama dengan opsi), kirim `undefined`
+            // agar parameter tidak ditambahkan ke URL (artinya "tampilkan semua").
+
+            products: localFilters.products.length > 0 && localFilters.products.length < productOptions.length
+                ? localFilters.products
+                : undefined,
+
+            witels: localFilters.witels.length > 0 && localFilters.witels.length < witelOptions.length
+                ? localFilters.witels
+                : undefined,
+
+            subTypes: localFilters.subTypes.length > 0 && localFilters.subTypes.length < subTypeOptions.length
+                ? localFilters.subTypes
+                : undefined,
+
+            branches: localFilters.branches.length > 0 && localFilters.branches.length < branchOptions.length
+                ? localFilters.branches
+                : undefined,
+
+            startDate: formatDateForQuery(localFilters.startDate),
+            endDate: formatDateForQuery(localFilters.endDate),
+        };
+
+        // Inertia akan mengonversi objek ini ke query string yang benar
+        // contoh: ?products[]=Netmonk&products[]=OCA&witels[]=BALI
+        router.get(route('dashboardDigitalProduct'), queryParams, {
             replace: true,
-            preserveScroll: true,
+            preserveState: true,
+            preserveScroll: true
         });
-    }
+    };
 
-    // Logika untuk memastikan urutan sub-tipe benar
-    const sortedAmountData = useMemo(() => {
-        if (!Array.isArray(amountBySubTypeData)) return [];
-        const subTypeOrder = ['AO', 'SO', 'DO', 'MO', 'RO'];
-        const dataMap = new Map(amountBySubTypeData.map(item => [item.sub_type, item]));
-        return subTypeOrder.map(subType => dataMap.get(subType) || { sub_type: subType });
-    }, [amountBySubTypeData]);
+    const resetFilters = () => router.get(route('dashboardDigitalProduct'), {}, { preserveScroll: true });
+    const handleLimitChange = (value) => router.get(route('dashboardDigitalProduct'), { ...filters, limit: value }, { preserveScroll: true, replace: true });
 
+    // --- LOGIKA FILTERING DATA --- (Tidak Berubah)
+    const filteredRevenueData = useMemo(() => revenueBySubTypeData?.filter(item => revenueFilters.products.includes(item.product)) || [], [revenueBySubTypeData, revenueFilters]);
+    const filteredAmountData = useMemo(() => amountBySubTypeData?.filter(item => amountFilters.products.includes(item.product)) || [], [amountBySubTypeData, amountFilters]);
+    const transformedRadarData = useMemo(() => {
+        if (!productRadarData || productRadarData.length === 0) return [];
+        const filteredByWitel = productRadarData.filter(item => radarFilters.witels.includes(item.nama_witel));
+        return radarFilters.products.map(product => ({
+            product_name: product,
+            ...Object.fromEntries(filteredByWitel.map(witelData => [witelData.nama_witel, witelData[product] || 0]))
+        }));
+    }, [productRadarData, radarFilters]);
+    const filteredWitelPieData = useMemo(() => witelPieData?.filter(item => pieFilters.witels.includes(item.nama_witel)) || [], [witelPieData, pieFilters]);
+
+
+    // --- RENDER KOMPONEN UI ---
     return (
-        <AuthenticatedLayout
-            header="Dashboard Digital Product"
-        >
+        <AuthenticatedLayout header="Dashboard Digital Product">
             <Head title="Dashboard Digital Product" />
 
+            {/* Panel Filter Global */}
             <div className="bg-white p-4 rounded-lg shadow-md mb-6">
-                <div className="flex items-center gap-4">
-                    <label htmlFor="period-filter" className="font-semibold text-gray-700">Pilih Periode:</label>
-                    <select
-                        id="period-filter"
-                        // [PERBAIKAN] Menambahkan fallback `|| ''` untuk mencegah error jika 'period' belum ada
-                        value={filters.period || ''}
-                        onChange={e => handleFilterChange('period', e.target.value)}
-                        className="border border-gray-300 rounded-md text-sm p-2"
-                    >
-                        {generatePeriodOptions()}
-                    </select>
+                <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-6 gap-4 items-end">
+                    {/* ... (Filter DropdownCheckbox lainnya tetap sama) ... */}
+                    <div className="col-span-1 md:col-span-2">
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Rentang Tanggal</label>
+                        <DatePicker selectsRange startDate={localFilters.startDate} endDate={localFilters.endDate} onChange={(update) => setLocalFilters(prev => ({ ...prev, startDate: update[0], endDate: update[1] }))} isClearable={true} dateFormat="dd/MM/yyyy" className="w-full border-gray-300 rounded-md shadow-sm" />
+                    </div>
+                    <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Produk</label>
+                        <DropdownCheckbox title="Pilih Produk" options={productOptions} selectedOptions={localFilters.products} onSelectionChange={s => setLocalFilters(p => ({ ...p, products: s }))} />
+                    </div>
+                    <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Witel</label>
+                        <DropdownCheckbox title="Pilih Witel" options={witelOptions} selectedOptions={localFilters.witels} onSelectionChange={s => setLocalFilters(p => ({ ...p, witels: s }))} />
+                    </div>
+                    <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Sub Type</label>
+                        <DropdownCheckbox title="Pilih Sub Type" options={subTypeOptions} selectedOptions={localFilters.subTypes} onSelectionChange={s => setLocalFilters(p => ({ ...p, subTypes: s }))} />
+                    </div>
+                    <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Branch</label>
+                        <DropdownCheckbox title="Pilih Branch" options={branchOptions} selectedOptions={localFilters.branches} onSelectionChange={s => setLocalFilters(p => ({ ...p, branches: s }))} />
+                    </div>
+                </div>
+                <div className="flex justify-end gap-3 mt-4">
+                    <button onClick={resetFilters} className="px-4 py-2 bg-gray-600 text-white text-sm font-medium rounded-md hover:bg-gray-700">Reset Filter</button>
+                    <button onClick={applyFilters} className="px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-md hover:bg-blue-700">Terapkan Filter</button>
                 </div>
             </div>
 
-            {/* <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 xl:grid-cols-5 gap-6 mb-6">
-                <StatsCard title="Revenue By Product" value="$250M" icon={<FaDollarSign color="white" />} color="bg-green-500" />
-                <StatsCard title="Amount by Product" value="$350M" icon={<FaShoppingCart color="white" />} color="bg-blue-500" />
-                <StatsCard title="Value Pie Chart" value="13B" icon={<FaChartPie color="white" />} color="bg-red-500" />
-                <StatsCard title="Segment Chart" value="520" icon={<FaChartLine color="white" />} color="bg-purple-500" />
-                <StatsCard title="Segment by Product" value="154" icon={<FaUsers color="white" />} color="bg-indigo-500" />
-            </div> */}
-
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-6">
-
-                {/* Kartu untuk Chart Revenue */}
-                <div className="bg-white p-6 rounded-lg shadow-md">
-                    <h3 className="font-semibold text-lg text-gray-800 mb-4">Revenue by Sub-type</h3>
-                    <RevenueBySubTypeChart data={revenueBySubTypeData} />
+            {/* ... Sisa dari komponen (Grid Chart dan Tabel) tidak berubah ... */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                <div className="bg-white p-6 rounded-lg shadow-md flex flex-col">
+                    <h3 className="font-semibold text-lg text-gray-800">Revenue by Sub-type</h3>
+                    <div className="flex-grow min-h-[300px]"><RevenueBySubTypeChart data={filteredRevenueData} /></div>
+                    <DropdownCheckbox title="Filter Produk" options={productOptions} selectedOptions={revenueFilters.products} onSelectionChange={(s) => setRevenueFilters(p => ({ ...p, products: s }))} />
                 </div>
-
-                {/* Kartu untuk Chart Amount */}
-                <div className="bg-white p-6 rounded-lg shadow-md">
-                    <h3 className="font-semibold text-lg text-gray-800 mb-4">Amount by Sub-type</h3>
-                    <AmountBySubTypeChart data={amountBySubTypeData} />
+                <div className="bg-white p-6 rounded-lg shadow-md flex flex-col">
+                    <h3 className="font-semibold text-lg text-gray-800">Amount by Sub-type</h3>
+                    <div className="flex-grow min-h-[300px]"><AmountBySubTypeChart data={filteredAmountData} /></div>
+                    <DropdownCheckbox title="Filter Produk" options={productOptions} selectedOptions={amountFilters.products} onSelectionChange={(s) => setAmountFilters(p => ({ ...p, products: s }))} />
                 </div>
-
             </div>
 
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mt-6">
-
-                {/* Kolom 1: Session by Sub-type */}
                 <div className="bg-white p-6 rounded-lg shadow-md">
                     <h3 className="font-semibold text-lg text-gray-800 mb-4">Session by Sub-type</h3>
-                    <p className="text-sm text-gray-500 mb-2">Showing data for order sub-type (AO|SO|DO|MO|RO).</p>
-                    <SessionSubTypeChart data={sessionBySubType} />
+                    <div className="min-h-[350px]"><SessionSubTypeChart data={sessionBySubType} /></div>
                 </div>
-
-                {/* Kolom 2: Product Radar Chart */}
-                <div className="bg-white p-6 rounded-lg shadow-md">
-                    <h3 className="font-semibold text-lg text-gray-800 mb-4">Product Radar Chart per Witel</h3>
-                    <p className="text-sm text-gray-500 mb-2">Showing data for product per witel in ALL.</p>
-                    <ProductRadarChart data={transformedRadarData} />
+                <div className="bg-white p-6 rounded-lg shadow-md flex flex-col">
+                    <h3 className="font-semibold text-lg text-gray-800">Product Radar Chart per Witel</h3>
+                    <div className="flex-grow min-h-[300px]"><ProductRadarChart data={transformedRadarData} /></div>
+                    <DropdownCheckbox title="Filter Produk" options={productOptions} selectedOptions={radarFilters.products} onSelectionChange={(s) => setRadarFilters(p => ({ ...p, products: s }))} />
+                    <DropdownCheckbox title="Filter Witel" options={witelOptions} selectedOptions={radarFilters.witels} onSelectionChange={(s) => setRadarFilters(p => ({ ...p, witels: s }))} />
                 </div>
-
-                {/* Kolom 3: Witel Pie Chart */}
-                <div className="bg-white p-6 rounded-lg shadow-md">
-                    <h3 className="font-semibold text-lg text-gray-800 mb-4">Witel Pie Chart</h3>
-                    <p className="text-sm text-gray-500 mb-2">Showing category of witel in ALL.</p>
-                    <WitelPieChart data={witelPieData} />
+                <div className="bg-white p-6 rounded-lg shadow-md flex flex-col">
+                    <h3 className="font-semibold text-lg text-gray-800">Witel Pie Chart</h3>
+                    <div className="flex-grow min-h-[300px]"><WitelPieChart data={filteredWitelPieData} /></div>
+                    <DropdownCheckbox title="Filter Witel" options={witelOptions} selectedOptions={pieFilters.witels} onSelectionChange={(s) => setPieFilters(p => ({ ...p, witels: s }))} />
                 </div>
-
             </div>
 
-            {/* Bagian Tabel Data Preview */}
             <div className="bg-white p-6 rounded-lg shadow-md mt-6">
                 <div className="flex justify-between items-center mb-4">
                     <h3 className="font-semibold text-lg text-gray-800">Data Preview</h3>
                     <div>
                         <label htmlFor="limit-filter" className="text-sm font-semibold text-gray-600 mr-2">Tampilkan:</label>
-                        <select
-                            id="limit-filter"
-                            value={filters.limit || '20'}
-                            onChange={e => handleFilterChange('limit', e.target.value)}
-                            className="border border-gray-300 rounded-md text-sm p-2"
-                        >
-                            <option value="20">20 Baris</option>
-                            <option value="50">50 Baris</option>
-                            <option value="100">100 Baris</option>
-                            <option value="500">500 Baris</option>
+                        <select id="limit-filter" value={filters.limit || '10'} onChange={e => handleLimitChange(e.target.value)} className="border border-gray-300 rounded-md text-sm p-2">
+                            <option value="10">10 Baris</option><option value="50">50 Baris</option><option value="100">100 Baris</option><option value="500">500 Baris</option>
                         </select>
                     </div>
                 </div>
@@ -170,56 +207,37 @@ export default function DashboardDigitalProduct({ auth, revenueBySubTypeData, am
                     <table className="w-full text-sm text-left text-gray-500">
                         <thead className="text-xs text-gray-700 uppercase bg-gray-50">
                             <tr>
-                                <th scope="col" className="px-6 py-3">Order ID</th>
-                                <th scope="col" className="px-6 py-3">Product</th>
-                                <th scope="col" className="px-6 py-3">Milestone</th>
-                                <th scope="col" className="px-6 py-3">Witel</th>
-                                <th scope="col" className="px-6 py-3">Status</th>
-                                <th scope="col" className="px-6 py-3">Created Date</th>
+                                <th scope="col" className="px-6 py-3">Order ID</th><th scope="col" className="px-6 py-3">Product</th><th scope="col" className="px-6 py-3">Milestone</th>
+                                <th scope="col" className="px-6 py-3">Witel</th><th scope="col" className="px-6 py-3">Status</th><th scope="col" className="px-6 py-3">Created Date</th>
                             </tr>
                         </thead>
                         <tbody>
-                            {/* [PERBAIKAN] Menambahkan pengecekan `dataPreview` sebelum mapping */}
-                            {dataPreview && dataPreview.data && dataPreview.data.map((item) => (
-                                <tr key={item.order_id} className="bg-white border-b hover:bg-gray-50">
-                                    <td className="px-6 py-4 font-mono">{item.order_id}</td>
-                                    <td className="px-6 py-4 font-medium text-gray-900">{item.product}</td>
-                                    <td className="px-6 py-4 max-w-xs truncate">{item.milestone}</td>
-                                    <td className="px-6 py-4">{item.nama_witel}</td>
-                                    <td className="px-6 py-4">
-                                        <StatusBadge
-                                            text={item.status_wfm?.toUpperCase()}
-                                            color={item.status_wfm === 'in progress' ? 'bg-yellow-100 text-yellow-800' : 'bg-green-100 text-green-800'}
-                                        />
-                                    </td>
-                                    <td className="px-6 py-4">{new Date(item.order_created_date).toLocaleString('id-ID')}</td>
-                                </tr>
-                            ))}
+                            {dataPreview?.data?.length > 0 ? (
+                                dataPreview.data.map((item) => (
+                                    <tr key={item.order_id} className="bg-white border-b hover:bg-gray-50">
+                                        <td className="px-6 py-4 font-mono">{item.order_id}</td><td className="px-6 py-4 font-medium text-gray-900">{item.product}</td>
+                                        <td className="px-6 py-4 max-w-xs truncate">{item.milestone}</td><td className="px-6 py-4">{item.nama_witel}</td>
+                                        <td className="px-6 py-4"><StatusBadge text={item.status_wfm?.toUpperCase()} color={item.status_wfm === 'in progress' ? 'bg-yellow-100 text-yellow-800' : 'bg-green-100 text-green-800'} /></td>
+                                        <td className="px-6 py-4">{new Date(item.order_created_date).toLocaleString('id-ID')}</td>
+                                    </tr>
+                                ))
+                            ) : (
+                                <tr><td colSpan="6" className="text-center py-4 text-gray-500">Tidak ada data yang cocok dengan filter yang dipilih.</td></tr>
+                            )}
                         </tbody>
                     </table>
                 </div>
-                {/* [PERBAIKAN] Menambahkan pengecekan `dataPreview` sebelum mapping */}
-                {dataPreview && dataPreview.links && (
+                {dataPreview?.links?.length > 0 && dataPreview.total > 0 && (
                     <div className="mt-4 flex justify-between items-center text-sm text-gray-600">
-                        <span>
-                            Menampilkan {dataPreview.from} sampai {dataPreview.to} dari {dataPreview.total} hasil
-                        </span>
+                        <span>Menampilkan {dataPreview.from} sampai {dataPreview.to} dari {dataPreview.total} hasil</span>
                         <div className="flex items-center">
                             {dataPreview.links.map((link, index) => (
-                                <Link
-                                    key={index}
-                                    href={link.url || '#'}
-                                    className={`px-3 py-1 border rounded-md mx-1 transition ${link.active ? 'bg-blue-600 text-white' : 'bg-white hover:bg-gray-100'} ${!link.url ? 'text-gray-400 cursor-not-allowed' : ''}`}
-                                    dangerouslySetInnerHTML={{ __html: link.label }}
-                                    as="button"
-                                    disabled={!link.url}
-                                />
+                                <Link key={index} href={link.url || '#'} className={`px-3 py-1 border rounded-md mx-1 transition ${link.active ? 'bg-blue-600 text-white' : 'bg-white hover:bg-gray-100'} ${!link.url ? 'text-gray-400 cursor-not-allowed' : ''}`} dangerouslySetInnerHTML={{ __html: link.label }} as="button" disabled={!link.url} preserveScroll />
                             ))}
                         </div>
                     </div>
                 )}
             </div>
-        </AuthenticatedLayout >
+        </AuthenticatedLayout>
     );
 }
-

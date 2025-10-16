@@ -1,36 +1,80 @@
 // resources/js/Components/ProductRadarChart.jsx
 
 import React from 'react';
-// [FIX] Tambahkan Tooltip dan Legend ke dalam import
-import { Radar, RadarChart, PolarGrid, Legend, PolarAngleAxis, PolarRadiusAxis, ResponsiveContainer, Tooltip } from 'recharts';
+import { Radar } from 'react-chartjs-2';
 
-const ProductRadarChart = ({ data }) => {
-    if (!data || data.length === 0) {
-        return <div className="text-center text-gray-500 p-4">No data available</div>;
-    }
-
-    const witelColors = {
-        'BALI': '#8884d8',
-        'JATIM BARAT': '#82ca9d',
-        'JATIM TIMUR': '#ffc658',
-        'NUSA TENGGARA': '#ff8042',
-        'SURAMADU': '#0088FE',
-    };
-
-    return (
-        <ResponsiveContainer width="100%" height={300}>
-            <RadarChart cx="50%" cy="50%" outerRadius="80%" data={data}>
-                <PolarGrid />
-                <PolarAngleAxis dataKey="product_name" />
-                <PolarRadiusAxis />
-                <Tooltip />
-                <Legend />
-                {Object.keys(witelColors).map(witel => (
-                    <Radar key={witel} name={witel} dataKey={witel} stroke={witelColors[witel]} fill={witelColors[witel]} fillOpacity={0.6} />
-                ))}
-            </RadarChart>
-        </ResponsiveContainer>
-    );
+// Opsi konfigurasi untuk chart
+const options = {
+    responsive: true,
+    maintainAspectRatio: false,
+    plugins: {
+        // Konfigurasi untuk mengecilkan tooltip saat di-hover
+        tooltip: {
+            padding: 8,
+            titleFont: {
+                size: 12,
+            },
+            bodyFont: {
+                size: 11,
+            },
+        },
+        // Konfigurasi untuk posisi dan spasi legenda
+        legend: {
+            position: 'bottom',
+            labels: {
+                boxWidth: 15,
+                padding: 20, // Menambah jarak horizontal antar item legenda
+            }
+        },
+    },
+    // Menambahkan padding di dalam area chart untuk memberi ruang
+    layout: {
+        padding: {
+            top: 20,
+            bottom: 20
+        }
+    },
+    scales: {
+        r: {
+            angleLines: {
+                display: false
+            },
+            suggestedMin: 0,
+        }
+    },
 };
 
-export default ProductRadarChart;
+export default function ProductRadarChart({ data }) {
+    // Tampilkan pesan jika tidak ada data
+    if (!data || data.length === 0) {
+        return <div className="flex items-center justify-center h-full text-gray-500">Tidak ada data untuk ditampilkan.</div>;
+    }
+
+    // Ambil label (nama Witel) dari objek data pertama
+    const labels = Object.keys(data[0] || {}).filter(key => key !== 'product_name');
+
+    // Siapkan data untuk chart
+    const chartData = {
+        labels: labels,
+        datasets: data.map((productData, index) => {
+            // Palet warna yang akan digunakan berulang
+            const colors = ['#8b5cf6', '#10b981', '#f59e0b', '#ef4444', '#3b82f6'];
+            const color = colors[index % colors.length];
+
+            return {
+                label: productData.product_name,
+                data: labels.map(label => productData[label] || 0),
+                backgroundColor: `${color}33`, // Warna area dengan transparansi
+                borderColor: color,
+                borderWidth: 2,
+                pointBackgroundColor: color,
+                pointBorderColor: '#fff',
+                pointHoverBackgroundColor: '#fff',
+                pointHoverBorderColor: color
+            };
+        }),
+    };
+
+    // Render komponen Radar dengan data dan opsi yang sudah disiapkan
+    return <Radar data={chartData} options={options} />;
+}
