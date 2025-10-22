@@ -108,7 +108,7 @@ const legsTableConfigTemplate = [
         ],
     },
     {
-        groupTitle: "Grand Total", groupClass: "bg-purple-600", columnClass: "bg-purple-500",
+        groupTitle: "Grand Total", groupClass: "bg-gray-600", columnClass: "bg-gray-500",
         columns: [
             {
                 key: "grand_total_realisasi_legs", title: "Total", type: "calculation", calculation: {
@@ -188,16 +188,52 @@ export default function DataReport({ smeReportData, legsReportData, inProgressDa
         return options;
     };
 
-    // URL dinamis untuk ekspor tabel In Progress
-    const inProgressExportUrl = useMemo(() => {
-        const params = {
-            segment: filters.segment,
-            month: filters.month, // Kirim filter bulan karena In Progress di halaman user pakai bulan
-            witel: filters.witel || undefined,
-        };
-        // Gunakan route yang benar untuk halaman ini
-        return route('data-report.exportInProgress', params);
-    }, [filters.segment, filters.month, filters.witel]);
+    // Fungsi untuk membuat input tersembunyi pada form
+    const createHiddenInput = (form, name, value) => {
+        const input = document.createElement("input");
+        input.type = "hidden";
+        input.name = name;
+        input.value = value;
+        form.appendChild(input);
+    };
+
+    // Fungsi untuk Ekspor Data Report Utama
+    const handleExportDataReport = () => {
+        const form = document.createElement("form");
+        form.method = "POST";
+        form.action = route('data-report.export');
+        form.style.display = "none";
+
+        const csrfToken = document.querySelector('meta[name="csrf-token"]').getAttribute("content");
+
+        createHiddenInput(form, "_token", csrfToken);
+        createHiddenInput(form, "month", filters.month || new Date().toISOString().slice(0, 7));
+        createHiddenInput(form, "segment", filters.segment || 'SME'); // Wajib ada untuk validasi
+
+        document.body.appendChild(form);
+        form.submit();
+        document.body.removeChild(form);
+    };
+
+    const handleExportInProgress = () => {
+        const form = document.createElement("form");
+        form.method = "POST";
+        form.action = route('data-report.exportInProgress');
+        form.style.display = "none";
+
+        const csrfToken = document.querySelector('meta[name="csrf-token"]').getAttribute("content");
+
+        createHiddenInput(form, "_token", csrfToken);
+        createHiddenInput(form, "segment", filters.segment || 'SME');
+        createHiddenInput(form, "month", filters.month || new Date().toISOString().slice(0, 7));
+        if (filters.witel) {
+            createHiddenInput(form, "witel", filters.witel);
+        }
+
+        document.body.appendChild(form);
+        form.submit();
+        document.body.removeChild(form);
+    };
 
     return (
         <AuthenticatedLayout header={<h2 className="font-semibold text-xl text-gray-800 leading-tight">Data Report</h2>}>
@@ -213,15 +249,13 @@ export default function DataReport({ smeReportData, legsReportData, inProgressDa
                                     {cutOffDate && <span className="text-sm font-normal text-gray-500 ml-2">(Cut Off {cutOffDate})</span>}
                                 </h2>
                                 <div className="flex items-center gap-4 mt-4 sm:mt-0">
-                                    <Link
-                                        href={route('data-report.export', { month: filters.month, segment: filters.segment })}
-                                        method="post" // <-- Beritahu Inertia untuk menggunakan metode POST
-                                        as="button"   // <-- Jadikan komponen ini berperilaku seperti tombol
+                                    <button
+                                        onClick={handleExportDataReport}
                                         className="inline-flex items-center px-4 py-2 bg-green-600 border border-transparent rounded-md font-semibold text-xs text-white uppercase tracking-widest hover:bg-green-700"
                                     >
                                         <FiDownload className="mr-2" />
                                         Ekspor Data Report
-                                    </Link>
+                                    </button>
                                     <select value={filters.month} onChange={(e) => handleFilterChange('month', e.target.value)} className="border-gray-300 rounded-md shadow-sm">
                                         {generatePeriodOptions()}
                                     </select>
@@ -263,21 +297,13 @@ export default function DataReport({ smeReportData, legsReportData, inProgressDa
                                     <p className="mt-1 text-sm text-gray-600">Daftar order yang sedang dalam proses.</p>
                                 </div>
                                 <div className="flex items-center gap-4 mt-4 sm:mt-0">
-                                    <Link
-                                        href={inProgressExportUrl}
-                                        method="post" // <-- Beritahu Inertia untuk menggunakan metode POST
-                                        as="button"   // <-- Jadikan komponen ini berperilaku seperti tombol
+                                    <button
+                                        onClick={handleExportInProgress}
                                         className="inline-flex items-center px-4 py-2 bg-green-600 border border-transparent rounded-md font-semibold text-xs text-white uppercase tracking-widest hover:bg-green-700"
                                     >
                                         <FiDownload className="mr-2 h-4 w-4" />
                                         Ekspor Data In Progress
-                                    </Link><a
-                                        href={inProgressExportUrl}
-                                        className="inline-flex items-center px-4 py-2 bg-green-600 border border-transparent rounded-md font-semibold text-xs text-white uppercase tracking-widest hover:bg-green-700"
-                                    >
-                                        <FiDownload className="mr-2 h-4 w-4" />
-                                        Ekspor Data In Progress
-                                    </a>
+                                    </button>
                                     <select
                                         aria-label="Filter by Year"
                                         value={filters.year || new Date().getFullYear()}

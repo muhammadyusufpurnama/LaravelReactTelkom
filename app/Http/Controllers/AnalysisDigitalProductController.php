@@ -143,237 +143,199 @@ class AnalysisDigitalProductController extends Controller
     // ===================================================================
     public function index(Request $request)
     {
-        // ===================================================================
-        // LANGKAH 1: DEFINISI FILTER
-        // ===================================================================
-        $periodInput = $request->input('period', now()->format('Y-m'));
-        $selectedSegment = $request->input('segment', 'SME'); // <-- Variabel didefinisikan sebagai $selectedSegment
-        $reportPeriod = \Carbon\Carbon::parse($periodInput)->startOfMonth();
+        // [1] BACA SEMUA FILTER, TERMASUK TAB YANG AKTIF
+        $filters = $request->only(['search', 'period', 'segment', 'witel', 'in_progress_year', 'net_price_status', 'tab']);
+        $activeTab = $request->input('tab', 'inprogress'); // Default tab adalah 'inprogress'
 
-        $inProgressYear = $request->input('in_progress_year', now()->year);
-        $searchQuery = $request->input('search', '');
-        $selectedWitel = $request->input('witel');
+        // Ambil filter utama untuk report
+        $periodInput = $request->input('period', now()->format('Y-m'));
+        $selectedSegment = $request->input('segment', 'SME');
+        $reportPeriod = \Carbon\Carbon::parse($periodInput)->startOfMonth();
         $paginationCount = 15;
 
         // ===================================================================
-        // LANGKAH 2: LOGIKA DATA REPORT (SESUAI VERSI LAMA)
+        // BAGIAN 1: Mengambil Data Report Utama (Logika ini tetap sama)
         // ===================================================================
-        $masterWitelList = ['BALI', 'JATIM BARAT', 'JATIM TIMUR', 'NUSA TENGGARA', 'SURAMADU'];
-        $productMap = [
-            'netmonk' => 'n', 'oca' => 'o', 'antares' => 'ae', 'antares eazy' => 'ae',
-            'antares eazysc' => 'ae', 'pijar' => 'ps', 'pijar sekolah' => 'ps',
+        $reportData = $this->getReportDataForSegment($selectedSegment, $reportPeriod);
+        $reportData = collect($reportData)->map(fn ($item) => (object) $item); // Pastikan formatnya objek
+
+        // ===================================================================
+        // BAGIAN 2: LOGIKA BARU UNTUK DATA TAB DETAIL (PAGINASI)
+        // ===================================================================
+
+        // [2] SIAPKAN SEMUA QUERY DASAR UNTUK SETIAP TAB
+        $inProgressQuery = DocumentData::query()
+            ->where('status_wfm', 'in progress')
+            ->where('segment', $selectedSegment)
+            ->whereYear('order_created_date', $request->input('in_progress_year', now()->year))
+            ->when($request->input('witel'), fn ($q, $w) => $q->where('nama_witel', $w));
+
+        $completeQuery = DocumentData::query()
+            ->where('status_wfm', 'done close bima')
+            ->where('segment', $selectedSegment);
+
+        $qcQuery = DocumentData::query()
+            ->where('status_wfm', '')
+            ->where('segment', $selectedSegment);
+
+        $historyQuery = UpdateLog::query()->latest();
+
+        $singleProductsQuery = DB::table('document_data')
+            ->select(
+                'order_id as uid',
+                'order_id',
+                'product as product_name', // Gunakan alias agar konsisten
+                'net_price',
+                'nama_witel',
+                'customer_name',
+                'order_created_date',
+                'is_template_price'
+            )
+            ->where('product', 'NOT LIKE', '%-%'); // Hanya ambil produk tunggal
+
+        // [2] Query untuk produk bundling dari `order_products`
+        $bundleProductsQuery = DB::table('order_products')
+            ->join('document_data', 'order_products.order_id', '=', 'document_data.order_id')
+            ->select(
+                'order_products.id as uid', // Gunakan ID dari order_products
+                'order_products.order_id',
+                'order_products.product_name',
+                'order_products.net_price',
+                'document_data.nama_witel',
+                'document_data.customer_name',
+                'document_data.order_created_date',
+                // Untuk produk bundling, kita anggap 'is_template_price' berdasarkan net_price-nya
+                DB::raw('CASE WHEN order_products.net_price > 0 THEN 0 ELSE 1 END as is_template_price')
+            );
+
+        // [3] Gabungkan kedua query
+        $netPriceQuery = $singleProductsQuery->union($bundleProductsQuery);
+
+        // [4] Terapkan filter status harga PADA QUERY GABUNGAN
+        $netPriceStatus = $request->input('net_price_status');
+        if ($netPriceStatus === 'template') {
+            $netPriceQuery->where('is_template_price', true);
+        } elseif ($netPriceStatus === 'pasti') {
+            $netPriceQuery->where('is_template_price', false);
+        }
+
+        // Filter pencarian tetap berlaku
+        if ($request->filled('search')) {
+            $searchTerm = $request->search;
+            $netPriceQuery->where('order_id', 'like', "%{$searchTerm}%");
+        }
+
+        // Terapkan filter search umum ke query yang relevan
+        if ($request->filled('search')) {
+            $searchTerm = $request->search;
+            $inProgressQuery->where('order_id', 'like', "%{$searchTerm}%");
+            $completeQuery->where('order_id', 'like', "%{$searchTerm}%");
+            $qcQuery->where('order_id', 'like', "%{$searchTerm}%");
+            $netPriceQuery->where('order_id', 'like', "%{$searchTerm}%");
+        }
+
+        $tabCounts = [
+            'inprogress' => (clone $inProgressQuery)->count(),
+            'complete' => (clone $completeQuery)->count(),
+            'qc' => (clone $qcQuery)->count(),
+            'history' => (clone $historyQuery)->count(),
+            'netprice' => (clone $netPriceQuery)->count(),
         ];
 
-        $reportDataMap = collect($masterWitelList)->mapWithKeys(function ($witel) use ($productMap) {
-            $data = ['nama_witel' => $witel];
-            $initials = array_unique(array_values($productMap));
-            foreach ($initials as $initial) {
-                $data["in_progress_{$initial}"] = 0;
-                $data["prov_comp_{$initial}_realisasi"] = 0;
-                $data["prov_comp_{$initial}_target"] = 0;
-                $data["revenue_{$initial}_ach"] = 0;
-                $data["revenue_{$initial}_target"] = 0;
-            }
+        // [3] INISIALISASI SEMUA DATA PAGINATOR SEBAGAI OBJEK KOSONG
+        // Ini PENTING agar props di React tidak error
+        $emptyPaginator = fn () => new \Illuminate\Pagination\LengthAwarePaginator([], 0, $paginationCount);
+        $inProgressData = $emptyPaginator();
+        $completeData = $emptyPaginator();
+        $qcData = $emptyPaginator();
+        $historyData = $emptyPaginator();
+        $netPriceData = $emptyPaginator();
 
-            return [$witel => $data];
-        });
-
-        // Query untuk Realisasi menggunakan $selectedSegment
-        $realizationDocuments = DocumentData::whereIn('nama_witel', $masterWitelList)
-            ->where('segment', $selectedSegment) // <-- Gunakan $selectedSegment
-            ->where('status_wfm', 'done close bima')
-            ->whereYear('order_created_date', $reportPeriod->year)
-            ->whereMonth('order_date', $reportPeriod->month)
-            ->get();
-
-        // Query untuk In Progress menggunakan $selectedSegment
-        $inProgressDocuments = DocumentData::whereIn('nama_witel', $masterWitelList)
-            ->where('segment', $selectedSegment) // <-- Gunakan $selectedSegment
-            ->where('status_wfm', 'in progress')
-            ->whereYear('order_created_date', $reportPeriod->year)
-            ->whereMonth('order_created_date', $reportPeriod->month)
-            ->get();
+        // [4] JALANKAN PAGINASI HANYA UNTUK TAB YANG AKTIF
+        switch ($activeTab) {
+            case 'inprogress':
+                $inProgressData = $inProgressQuery->orderBy('order_created_date', 'desc')->paginate($paginationCount)->withQueryString();
+                break;
+            case 'complete':
+                $completeData = $completeQuery->orderBy('updated_at', 'desc')->paginate($paginationCount)->withQueryString();
+                break;
+            case 'qc':
+                $qcData = $qcQuery->orderBy('updated_at', 'desc')->paginate($paginationCount)->withQueryString();
+                break;
+            case 'history':
+                $historyData = $historyQuery->paginate(10)->withQueryString(); // History punya item per halaman berbeda
+                break;
+            case 'netprice':
+                $netPriceData = $netPriceQuery->orderBy('order_created_date', 'desc')->paginate($paginationCount)->withQueryString();
+                break;
+        }
 
         // ===================================================================
-
-        // Sisa dari method (looping, kalkulasi, dll.)
-        foreach ($inProgressDocuments as $doc) {
-            $witel = $doc->nama_witel;
-            if (!$reportDataMap->has($witel)) {
-                continue;
-            }
-
-            $productsToProcess = [];
-            if (str_contains($doc->product, '-')) {
-                $bundleItems = DB::table('order_products')->where('order_id', $doc->order_id)->where('status_wfm', 'in progress')->get();
-                foreach ($bundleItems as $item) {
-                    $productsToProcess[] = $item->product_name;
-                }
-            } else {
-                $productsToProcess[] = $doc->product;
-            }
-
-            foreach ($productsToProcess as $productName) {
-                $pName = strtolower(trim($productName));
-                if (isset($productMap[$pName])) {
-                    $currentData = $reportDataMap->get($witel);
-                    $initial = $productMap[$pName];
-                    ++$currentData["in_progress_{$initial}"];
-                    $reportDataMap->put($witel, $currentData);
-                }
-            }
-        }
-
-        foreach ($realizationDocuments as $doc) {
-            $witel = $doc->nama_witel;
-            if (!$reportDataMap->has($witel)) {
-                continue;
-            }
-
-            $productsToProcess = [];
-            if (str_contains($doc->product, '-')) {
-                $bundleItems = DB::table('order_products')->where('order_id', $doc->order_id)->where('status_wfm', 'done close bima')->get();
-                foreach ($bundleItems as $item) {
-                    $productsToProcess[] = ['name' => $item->product_name, 'price' => $item->net_price];
-                }
-            } else {
-                $productsToProcess[] = ['name' => $doc->product, 'price' => $doc->net_price];
-            }
-
-            foreach ($productsToProcess as $productInfo) {
-                $pName = strtolower(trim($productInfo['name']));
-                if (isset($productMap[$pName])) {
-                    $currentData = $reportDataMap->get($witel);
-                    $initial = $productMap[$pName];
-                    ++$currentData["prov_comp_{$initial}_realisasi"];
-                    $currentData["revenue_{$initial}_ach"] += $productInfo['price'];
-                    $reportDataMap->put($witel, $currentData);
-                }
-            }
-        }
-
-        $targets = Target::where('segment', $selectedSegment)->where('period', $reportPeriod->format('Y-m-d'))->get();
-        foreach ($targets as $target) {
-            $witel = $target->nama_witel;
-            $pName = strtolower(trim($target->product_name));
-            if (isset($reportDataMap[$witel]) && isset($productMap[$pName])) {
-                $currentData = $reportDataMap->get($witel);
-                $initial = $productMap[$pName];
-                $metricKey = $target->metric_type;
-                $currentData["{$metricKey}_{$initial}_target"] = $target->target_value;
-                $reportDataMap->put($witel, $currentData);
-            }
-        }
-
-        foreach ($reportDataMap as $witel => $data) {
-            $currentData = $reportDataMap->get($witel);
-            foreach (array_unique(array_values($productMap)) as $initial) {
-                $currentData["revenue_{$initial}_ach"] /= 1000000;
-            }
-            $reportDataMap->put($witel, $currentData);
-        }
-
-        $reportData = $reportDataMap->values()->map(fn ($item) => (object) $item);
-
-        // Query untuk data tabel detail, KPI, dll. (tidak berubah)
+        // BAGIAN 3: Mengambil Data Lainnya (KPI, Config, dll - Logika tetap sama)
+        // ===================================================================
         $pageName = 'analysis_digital_'.strtolower($selectedSegment);
         $configRecord = UserTableConfiguration::where('page_name', $pageName)->first();
         $savedTableConfig = $configRecord ? $configRecord->configuration : null;
         $customTargets = CustomTarget::where('user_id', auth()->id())->where('page_name', $pageName)->where('period', $reportPeriod->format('Y-m-d'))->get();
 
-        $inProgressQuery = DocumentData::query()->where('status_wfm', 'in progress')->where('segment', $selectedSegment)->whereYear('order_created_date', $inProgressYear)->when($selectedWitel, fn ($q, $w) => $q->where('nama_witel', $w))->when($searchQuery, fn ($q, $s) => $q->where('order_id', 'like', '%'.$s.'%'));
-        $inProgressData = $inProgressQuery->orderBy('order_created_date', 'desc')->paginate($paginationCount, ['*'], 'in_progress_page')->withQueryString();
-
-        $baseQuery = DocumentData::where('segment', $selectedSegment)->when($searchQuery, fn ($q, $s) => $q->where('order_id', 'like', '%'.$s.'%'));
-        $completeData = $baseQuery->clone()->where('status_wfm', 'done close bima')->orderBy('updated_at', 'desc')->paginate($paginationCount, ['*'], 'complete_page')->withQueryString();
-        $qcData = DocumentData::where('status_wfm', '')->where('segment', $selectedSegment)->when($searchQuery, fn ($q) => $q->where('order_id', 'like', '%'.$searchQuery.'%'))->orderBy('updated_at', 'desc')->paginate($paginationCount, ['*'], 'qc_page')->withQueryString();
-        $historyData = UpdateLog::latest()->paginate(10, ['*'], 'history_page')->withQueryString();
-
         $officers = AccountOfficer::orderBy('name')->get();
+        // Logika untuk $kpiData... (copy-paste dari controller lama Anda)
         $kpiData = $officers->map(function ($officer) {
-            // Tentukan filter berdasarkan data officer
+            // ... (SELURUH LOGIKA PERHITUNGAN KPI ANDA DI SINI) ...
+            // Kode ini terlalu panjang untuk disalin ulang, pastikan Anda memasukkan
+            // blok kalkulasi KPI dari controller lama Anda di sini.
             $witelFilter = $officer->filter_witel_lama;
             $specialFilter = $officer->special_filter_column && $officer->special_filter_value
                 ? ['column' => $officer->special_filter_column, 'value' => $officer->special_filter_value]
                 : null;
-
-            // Query dasar untuk order tunggal dan order bundle
-            $singleQuery = DocumentData::where('witel_lama', $witelFilter)
-                ->whereNotNull('product')
-                ->where('product', 'NOT LIKE', '%-%')
-                ->where('product', 'NOT LIKE', "%\n%")
-                ->when($specialFilter, fn ($q) => $q->where($specialFilter['column'], $specialFilter['value']));
-
-            $bundleQuery = DB::table('order_products')
-                ->join('document_data', 'order_products.order_id', '=', 'document_data.order_id')
-                ->where('document_data.witel_lama', $witelFilter)
-                ->when($specialFilter, fn ($q) => $q->where('document_data.'.$specialFilter['column'], $specialFilter['value']));
-
-            // Hitung KPI (Done & OGP untuk NCX & SCONE)
-            $done_ncx = $singleQuery->clone()->where('status_wfm', 'done close bima')->where('channel', '!=', 'SC-One')->count()
-                + $bundleQuery->clone()->where('order_products.status_wfm', 'done close bima')->where('order_products.channel', '!=', 'SC-One')->count();
-
-            $done_scone = $singleQuery->clone()->where('status_wfm', 'done close bima')->where('channel', 'SC-One')->count()
-                + $bundleQuery->clone()->where('order_products.status_wfm', 'done close bima')->where('order_products.channel', 'SC-One')->count();
-
-            $ogp_ncx = $singleQuery->clone()->where('status_wfm', 'in progress')->where('channel', '!=', 'SC-One')->count()
-                + $bundleQuery->clone()->where('order_products.status_wfm', 'in progress')->where('order_products.channel', '!=', 'SC-One')->count();
-
-            $ogp_scone = $singleQuery->clone()->where('status_wfm', 'in progress')->where('channel', 'SC-One')->count()
-                + $bundleQuery->clone()->where('order_products.status_wfm', 'in progress')->where('order_products.channel', 'SC-One')->count();
-
+            $singleQuery = DocumentData::where('witel_lama', $witelFilter)->whereNotNull('product')->where('product', 'NOT LIKE', '%-%')->where('product', 'NOT LIKE', "%\n%")->when($specialFilter, fn ($q) => $q->where($specialFilter['column'], $specialFilter['value']));
+            $bundleQuery = DB::table('order_products')->join('document_data', 'order_products.order_id', '=', 'document_data.order_id')->where('document_data.witel_lama', $witelFilter)->when($specialFilter, fn ($q) => $q->where('document_data.'.$specialFilter['column'], $specialFilter['value']));
+            $done_ncx = $singleQuery->clone()->where('status_wfm', 'done close bima')->where('channel', '!=', 'SC-One')->count() + $bundleQuery->clone()->where('order_products.status_wfm', 'done close bima')->where('order_products.channel', '!=', 'SC-One')->count();
+            $done_scone = $singleQuery->clone()->where('status_wfm', 'done close bima')->where('channel', 'SC-One')->count() + $bundleQuery->clone()->where('order_products.status_wfm', 'done close bima')->where('order_products.channel', 'SC-One')->count();
+            $ogp_ncx = $singleQuery->clone()->where('status_wfm', 'in progress')->where('channel', '!=', 'SC-One')->count() + $bundleQuery->clone()->where('order_products.status_wfm', 'in progress')->where('order_products.channel', '!=', 'SC-One')->count();
+            $ogp_scone = $singleQuery->clone()->where('status_wfm', 'in progress')->where('channel', 'SC-One')->count() + $bundleQuery->clone()->where('order_products.status_wfm', 'in progress')->where('order_products.channel', 'SC-One')->count();
             $total_ytd = $done_ncx + $done_scone + $ogp_ncx + $ogp_scone;
-
-            // Perhitungan Q3 (bisa dibuat dinamis jika perlu)
             $q3Months = [7, 8, 9];
-            $q3Year = 2025; // Tahun ini bisa disesuaikan
-
+            $q3Year = 2025;
             $singleQueryQ3 = $singleQuery->clone()->whereYear('order_created_date', $q3Year)->whereIn(DB::raw('MONTH(order_created_date)'), $q3Months);
             $bundleQueryQ3 = $bundleQuery->clone()->whereYear('document_data.order_created_date', $q3Year)->whereIn(DB::raw('MONTH(document_data.order_created_date)'), $q3Months);
-
-            $done_scone_q3 = $singleQueryQ3->clone()->where('status_wfm', 'done close bima')->where('channel', 'SC-One')->count()
-                + $bundleQueryQ3->clone()->where('order_products.status_wfm', 'done close bima')->where('order_products.channel', 'SC-One')->count();
-
-            $done_ncx_q3 = $singleQueryQ3->clone()->where('status_wfm', 'done close bima')->where('channel', '!=', 'SC-One')->count()
-                + $bundleQueryQ3->clone()->where('order_products.status_wfm', 'done close bima')->where('order_products.channel', '!=', 'SC-One')->count();
-
-            $ogp_ncx_q3 = $singleQueryQ3->clone()->where('status_wfm', 'in progress')->where('channel', '!=', 'SC-One')->count()
-                + $bundleQueryQ3->clone()->where('order_products.status_wfm', 'in progress')->where('order_products.channel', '!=', 'SC-One')->count();
-
-            $ogp_scone_q3 = $singleQueryQ3->clone()->where('status_wfm', 'in progress')->where('channel', 'SC-One')->count()
-                + $bundleQueryQ3->clone()->where('order_products.status_wfm', 'in progress')->where('order_products.channel', 'SC-One')->count();
-
+            $done_scone_q3 = $singleQueryQ3->clone()->where('status_wfm', 'done close bima')->where('channel', 'SC-One')->count() + $bundleQueryQ3->clone()->where('order_products.status_wfm', 'done close bima')->where('order_products.channel', 'SC-One')->count();
+            $done_ncx_q3 = $singleQueryQ3->clone()->where('status_wfm', 'done close bima')->where('channel', '!=', 'SC-One')->count() + $bundleQueryQ3->clone()->where('order_products.status_wfm', 'done close bima')->where('order_products.channel', '!=', 'SC-One')->count();
+            $ogp_ncx_q3 = $singleQueryQ3->clone()->where('status_wfm', 'in progress')->where('channel', '!=', 'SC-One')->count() + $bundleQueryQ3->clone()->where('order_products.status_wfm', 'in progress')->where('order_products.channel', '!=', 'SC-One')->count();
+            $ogp_scone_q3 = $singleQueryQ3->clone()->where('status_wfm', 'in progress')->where('channel', 'SC-One')->count() + $bundleQueryQ3->clone()->where('order_products.status_wfm', 'in progress')->where('order_products.channel', 'SC-One')->count();
             $total_q3 = $done_ncx_q3 + $done_scone_q3 + $ogp_ncx_q3 + $ogp_scone_q3;
 
             return [
-                'id' => $officer->id,
-                'nama_po' => $officer->name,
-                'witel' => $officer->display_witel,
-                'done_ncx' => $done_ncx,
-                'done_scone' => $done_scone,
-                'ogp_ncx' => $ogp_ncx,
-                'ogp_scone' => $ogp_scone,
-                'total' => $total_ytd,
-                'ach_ytd' => $total_ytd > 0 ? number_format((($done_ncx + $done_scone) / $total_ytd) * 100, 1).'%' : '0.0%',
-                'ach_q3' => $total_q3 > 0 ? number_format((($done_ncx_q3 + $done_scone_q3) / $total_q3) * 100, 1).'%' : '0.0%',
+                'id' => $officer->id, 'nama_po' => $officer->name, 'witel' => $officer->display_witel, 'done_ncx' => $done_ncx, 'done_scone' => $done_scone, 'ogp_ncx' => $ogp_ncx, 'ogp_scone' => $ogp_scone, 'total' => $total_ytd, 'ach_ytd' => $total_ytd > 0 ? number_format((($done_ncx + $done_scone) / $total_ytd) * 100, 1).'%' : '0.0%', 'ach_q3' => $total_q3 > 0 ? number_format((($done_ncx_q3 + $done_scone_q3) / $total_q3) * 100, 1).'%' : '0.0%',
             ];
         });
 
-        // Kirim data ke view
+        // ===================================================================
+        // BAGIAN 4: Render View Inertia
+        // ===================================================================
         return Inertia::render('Admin/AnalysisDigitalProduct', [
+            'tabCounts' => $tabCounts,
+            // Data Report Utama
             'reportData' => $reportData,
             'currentSegment' => $selectedSegment,
             'period' => $periodInput,
+            'currentInProgressYear' => $request->input('in_progress_year', now()->year),
+
+            // Data Paginasi untuk Detail Tab
             'inProgressData' => $inProgressData,
             'completeData' => $completeData,
+            'netPriceData' => $netPriceData,
             'historyData' => $historyData,
             'qcData' => $qcData,
+
+            // Data Tambahan
             'accountOfficers' => $officers,
             'kpiData' => $kpiData,
-            'currentInProgressYear' => $inProgressYear,
-            'filters' => $request->only(['search', 'period', 'segment', 'in_progress_year', 'witel']),
             'customTargets' => $customTargets->groupBy('target_key')->map(fn ($group) => $group->pluck('value', 'witel')),
             'savedTableConfig' => $savedTableConfig,
+
+            // Filter
+            'filters' => $filters,
         ]);
     }
 
@@ -441,7 +403,6 @@ class AnalysisDigitalProductController extends Controller
 
     private function getReportDataForSegment(string $segment, \Carbon\Carbon $reportPeriod)
     {
-        // [PERBAIKAN UTAMA] Definisikan rentang awal dan akhir bulan
         $startDate = $reportPeriod->copy()->startOfMonth();
         $endDate = $reportPeriod->copy()->endOfMonth();
 
@@ -580,7 +541,7 @@ class AnalysisDigitalProductController extends Controller
             ->dispatch();
 
         return Inertia::location(
-            route('analysisDigitalProduct.index', [
+            route('admin.analysisDigitalProduct.index', [
                 'batch_id' => $batch->id,
                 'job_type' => 'mentah',
                 'segment' => $request->input('segment', 'SME'),
@@ -847,5 +808,44 @@ class AnalysisDigitalProductController extends Controller
         }
 
         return response()->json(null);
+    }
+
+    public function updateNetPrice(Request $request, $order_id) // Ubah parameter
+    {
+        $validated = $request->validate([
+            'net_price' => 'required|numeric|min:0',
+            'product_name' => 'required|string', // [BARU] Kita butuh nama produk untuk mencari di tabel order_products
+        ]);
+
+        // Coba update di tabel document_data (untuk produk tunggal)
+        $updated = DocumentData::where('order_id', $order_id)
+            ->where('product', $validated['product_name'])
+            ->update([
+                'net_price' => $validated['net_price'],
+                'is_template_price' => false,
+            ]);
+
+        // Jika tidak ada yang terupdate, coba update di tabel order_products (untuk produk bundling)
+        if ($updated === 0) {
+            $updated = DB::table('order_products')
+                ->where('order_id', $order_id)
+                ->where('product_name', $validated['product_name'])
+                ->update(['net_price' => $validated['net_price']]);
+        }
+
+        if ($updated > 0) {
+            return Redirect::back()->with('success', "Harga untuk Order ID {$order_id} berhasil diupdate.");
+        }
+
+        return Redirect::back()->with('error', 'Gagal menemukan order yang cocok untuk diupdate.');
+    }
+
+    public function progress($batchId)
+    {
+        $key = "import_progress_{$batchId}";
+        $progress = Cache::get($key, 0);
+        Log::info("Frontend minta progress untuk {$key}: {$progress}%");
+
+        return response()->json(['progress' => $progress]);
     }
 }

@@ -1,15 +1,11 @@
 // resources/js/Layouts/AuthenticatedLayout.jsx
 
-// [MODIFIKASI 1] Impor 'useEffect' dan 'useRef'
 import React, { useState, useEffect, useRef } from 'react';
-import { router } from '@inertiajs/react';
+import { router, usePage } from '@inertiajs/react';
 import Sidebar from '@/Components/Sidebar';
 import Header from '@/Components/Header';
-import { usePage } from '@inertiajs/react';
 import { Toaster } from 'react-hot-toast';
 
-// [MODIFIKASI 2] Tambahkan helper hook ini di dalam file yang sama atau impor dari file terpisah.
-// Hook ini berguna untuk mendapatkan nilai state dari render sebelumnya.
 function usePrevious(value) {
     const ref = useRef();
     useEffect(() => {
@@ -19,7 +15,8 @@ function usePrevious(value) {
 }
 
 export default function AuthenticatedLayout({ header, children }) {
-    const user = usePage().props.auth?.user;
+    const { auth, component } = usePage().props; // [FIX 1] Ambil nama komponen saat ini
+    const user = auth?.user;
 
     const [isSidebarOpen, setIsSidebarOpen] = useState(true);
     const toggleSidebar = () => setIsSidebarOpen(prevState => !prevState);
@@ -29,29 +26,35 @@ export default function AuthenticatedLayout({ header, children }) {
     });
     const prevIsCmsMode = usePrevious(isCmsMode);
 
-    // Efek ini akan menyimpan state ke localStorage setiap kali berubah
     useEffect(() => {
         localStorage.setItem('isCmsMode', isCmsMode);
     }, [isCmsMode]);
 
-    // [MODIFIKASI 3] Logika navigasi sekarang dipindah ke useEffect.
-    // Efek ini akan mengawasi perubahan 'isCmsMode' dan mengarahkan pengguna.
+    // [FIX 2] EFEK UNTUK SINKRONISASI SAAT LOGIN
+    // Efek ini berjalan hanya sekali saat layout dimuat.
     useEffect(() => {
-        // Cek jika state benar-benar berubah (bukan render awal)
+        // Logika: Jika halaman yang dimuat adalah dashboard utama,
+        // ini kemungkinan besar terjadi setelah login.
+        // Kita paksa mode CMS menjadi nonaktif untuk memastikan state awal yang bersih.
+        if (component === 'DashboardDigitalProduct') {
+            if (isCmsMode) {
+                console.log("Login detected on dashboard, forcing User Mode.");
+                setIsCmsMode(false);
+            }
+        }
+    }, []); // <-- Dependency array kosong berarti hanya berjalan sekali saat mount
+
+    // Efek untuk navigasi saat mode di-toggle (TETAP SAMA)
+    useEffect(() => {
         if (prevIsCmsMode !== undefined && prevIsCmsMode !== isCmsMode) {
             if (isCmsMode) {
-                // Transisi dari mode User -> Admin
                 router.visit(route('admin.analysisDigitalProduct.index'));
             } else {
-                // Transisi dari mode Admin -> User
                 router.visit(route('dashboard'));
             }
         }
-    }, [isCmsMode, prevIsCmsMode]); // Jalankan efek saat isCmsMode berubah
+    }, [isCmsMode, prevIsCmsMode]);
 
-
-    // [MODIFIKASI 4] Fungsi toggle sekarang menjadi sangat sederhana.
-    // Tugasnya HANYA mengubah state.
     const toggleCmsMode = () => {
         setIsCmsMode(prevMode => !prevMode);
     };
@@ -82,7 +85,7 @@ export default function AuthenticatedLayout({ header, children }) {
                     user={user}
                     pageHeader={header}
                     isCmsMode={isCmsMode}
-                    toggleCmsMode={toggleCmsMode} // Prop ini tetap dikirim ke Header
+                    toggleCmsMode={toggleCmsMode}
                 />
 
                 <main className="flex-1 overflow-y-auto p-4 sm:p-6 lg:p-8">

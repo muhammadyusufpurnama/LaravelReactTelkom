@@ -1,9 +1,8 @@
-// resources/js/Components/Sidebar.jsx
-
 import React, { useState, useEffect, useRef } from 'react';
 import { Link } from '@inertiajs/react';
-import { MdDashboard, MdAssessment, MdKeyboardArrowDown } from 'react-icons/md';
-import { FiUsers, FiChevronLeft, FiChevronRight, FiUser, FiLogOut } from 'react-icons/fi';
+import { MdDashboard, MdAssessment, MdKeyboardArrowDown, MdWifiTethering } from 'react-icons/md';
+import { FiUsers, FiChevronLeft, FiChevronRight, FiUser, FiLogOut, FiX } from 'react-icons/fi';
+import GoogleDriveUploader from '@/Components/GoogleDriveUploader';
 
 // Komponen-komponen kecil (Helper components)
 const Logo = ({ isSidebarOpen }) => (
@@ -34,26 +33,127 @@ const NavLink = ({ href, active, icon, isSidebarOpen, children }) => (
     </div>
 );
 
-const UserProfile = ({ user, isSidebarOpen }) => {
-    // Kode komponen UserProfile tidak perlu diubah
-    const [isProfileOpen, setIsProfileOpen] = React.useState(false); const profileRef = React.useRef(null); React.useEffect(() => { function handleClickOutside(event) { if (profileRef.current && !profileRef.current.contains(event.target)) { setIsProfileOpen(false); } } document.addEventListener("mousedown", handleClickOutside); return () => document.removeEventListener("mousedown", handleClickOutside); }, []); if (!user) return null; return (<div className="mt-auto p-2 border-t border-gray-200 relative" ref={profileRef}>{isProfileOpen && (<div className={`absolute bottom-full mb-2 bg-white rounded-md shadow-lg border py-2 z-20 ${isSidebarOpen ? 'w-[calc(100%-1rem)]' : 'left-full ml-2 w-56'}`}><div className="px-4 py-3 border-b"><p className="font-bold text-gray-800 truncate">{user.name}</p><p className="text-sm text-gray-500 truncate">{user.email}</p></div><div className="mt-2">{user.role === 'superadmin' && (<Link href={route('users.index')} className="flex items-center w-full px-4 py-2 text-sm text-gray-700 hover:bg-gray-100" onClick={() => setIsProfileOpen(false)}><FiUsers className="mr-3" />User Management</Link>)}<Link href={route('profile.edit')} className="flex items-center w-full px-4 py-2 text-sm text-gray-700 hover:bg-gray-100" onClick={() => setIsProfileOpen(false)}><FiUser className="mr-3" />Edit Profile</Link><Link href={route('logout')} method="post" as="button" className="flex items-center w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-red-50"><FiLogOut className="mr-3" />Log Out</Link></div></div>)}<div className={`flex items-center cursor-pointer p-2 rounded-lg hover:bg-gray-100 ${!isSidebarOpen && 'justify-center'}`} onClick={() => setIsProfileOpen(!isProfileOpen)}><div className="w-10 h-10 rounded-full bg-red-600 flex items-center justify-center text-white font-bold text-lg flex-shrink-0">{user.name.charAt(0).toUpperCase()}</div><div className={`ml-3 flex-grow overflow-hidden transition-all duration-300 ${isSidebarOpen ? 'w-auto opacity-100' : 'w-0 opacity-0'}`}><p className="font-semibold text-gray-800 text-sm truncate">{user.name}</p><p className="text-xs text-gray-500 capitalize">{user.role}</p></div></div></div>);
+// Komponen Modal yang bisa digunakan ulang
+const Modal = ({ show, onClose, children }) => {
+    if (!show) {
+        return null;
+    }
+    return (
+        <div
+            className="fixed inset-0 bg-black bg-opacity-50 z-40 flex items-center justify-center"
+            onClick={onClose}
+        >
+            <div
+                className="bg-white rounded-lg shadow-xl w-full max-w-2xl transform transition-all"
+                onClick={e => e.stopPropagation()}
+            >
+                <div className="p-6 relative">
+                    <button onClick={onClose} className="absolute top-4 right-4 text-gray-400 hover:text-gray-600">
+                        <FiX size={24} />
+                    </button>
+                    {children}
+                </div>
+            </div>
+        </div>
+    );
 };
 
 
+// MODIFIKASI UTAMA DI SINI
+const UserProfile = ({ user, isSidebarOpen }) => {
+    const [isProfileOpen, setIsProfileOpen] = useState(false);
+    const [isToolOpen, setIsToolOpen] = useState(false); // State terpisah untuk modal
+    const profileRef = useRef(null);
+
+    // Menutup pop-up jika klik di luar
+    useEffect(() => {
+        function handleClickOutside(event) {
+            if (profileRef.current && !profileRef.current.contains(event.target)) {
+                setIsProfileOpen(false);
+            }
+        }
+        document.addEventListener("mousedown", handleClickOutside);
+        return () => document.removeEventListener("mousedown", handleClickOutside);
+    }, []);
+
+    if (!user) return null;
+
+    const handleOpenConnectivityTool = () => {
+        setIsProfileOpen(false); // Tutup menu profil
+        setIsToolOpen(true);     // Buka modal konektivitas
+    };
+
+    return (
+        <>
+            <div className="mt-auto p-2 border-t border-gray-200 relative" ref={profileRef}>
+                {/* Menu pop-up profil yang asli */}
+                {isProfileOpen && (
+                    <div className={`absolute bottom-full mb-2 bg-white rounded-md shadow-lg border py-2 z-20 ${isSidebarOpen ? 'w-[calc(100%-1rem)]' : 'left-full ml-2 w-56'}`}>
+                        <div className="px-4 py-3 border-b">
+                            <p className="font-bold text-gray-800 truncate">{user.name}</p>
+                            <p className="text-sm text-gray-500 truncate">{user.email}</p>
+                        </div>
+                        <div className="mt-2">
+                            {user.role === 'superadmin' && (
+                                <Link href={route('users.index')} className="flex items-center w-full px-4 py-2 text-sm text-gray-700 hover:bg-gray-100" onClick={() => setIsProfileOpen(false)}>
+                                    <FiUsers className="mr-3" />User Management
+                                </Link>
+                            )}
+
+                            {/* === PERUBAHAN DI SINI === */}
+                            {/* Tombol ini sekarang hanya muncul untuk superadmin */}
+                            {user.role === 'superadmin' && (
+                                <button onClick={handleOpenConnectivityTool} className="flex items-center w-full px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">
+                                    <MdWifiTethering className="mr-3" size={16} /> Cek Konektivitas Google
+                                </button>
+                            )}
+                            {/* === AKHIR PERUBAHAN === */}
+
+                            <Link href={route('profile.edit')} className="flex items-center w-full px-4 py-2 text-sm text-gray-700 hover:bg-gray-100" onClick={() => setIsProfileOpen(false)}>
+                                <FiUser className="mr-3" />Edit Profile
+                            </Link>
+                            <Link href={route('logout')} method="post" as="button" className="flex items-center w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-red-50">
+                                <FiLogOut className="mr-3" />Log Out
+                            </Link>
+                        </div>
+                    </div>
+                )}
+                {/* Tampilan footer sidebar */}
+                <div
+                    className={`flex items-center cursor-pointer p-2 rounded-lg hover:bg-gray-100 ${!isSidebarOpen && 'justify-center'}`}
+                    onClick={() => setIsProfileOpen(!isProfileOpen)}
+                >
+                    <div className="w-10 h-10 rounded-full bg-red-600 flex items-center justify-center text-white font-bold text-lg flex-shrink-0">
+                        {user.name.charAt(0).toUpperCase()}
+                    </div>
+                    <div className={`ml-3 flex-grow overflow-hidden transition-all duration-300 ${isSidebarOpen ? 'w-auto opacity-100' : 'w-0 opacity-0'}`}>
+                        <p className="font-semibold text-gray-800 text-sm truncate">{user.name}</p>
+                        <p className="text-xs text-gray-500 capitalize">{user.role}</p>
+                    </div>
+                </div>
+            </div>
+
+            {/* Modal untuk alat konektivitas */}
+            <Modal show={isToolOpen} onClose={() => setIsToolOpen(false)}>
+                <GoogleDriveUploader />
+            </Modal>
+        </>
+    );
+};
+
+
+// Komponen Sidebar utama (logika menu tidak berubah)
 export default function Sidebar({ user, isSidebarOpen, toggleSidebar, isCmsMode }) {
-    // State untuk membuka/menutup dropdown menu
     const [isDashboardOpen, setIsDashboardOpen] = useState(false);
     const [isReportsOpen, setIsReportsOpen] = useState(false);
     const [isDigitalProductOpen, setIsDigitalProductOpen] = useState(false);
     const [isSosOpen, setIsSosOpen] = useState(false);
     const [isAnalysisOpen, setIsAnalysisOpen] = useState(true);
 
-    // Cek rute aktif untuk styling
     const isDashboardActive = route().current('dashboardDigitalProduct');
     const isReportsActive = route().current('data-report.index') || route().current('galaksi.index');
     const isAdminAnalysisActive = route().current('admin.analysisDigitalProduct.index') || route().current('admin.analysisSOS.index');
 
-    // Menutup semua dropdown jika sidebar ditutup
     useEffect(() => {
         if (!isSidebarOpen) {
             setIsDashboardOpen(false);
@@ -74,9 +174,7 @@ export default function Sidebar({ user, isSidebarOpen, toggleSidebar, isCmsMode 
 
             <nav className="flex-grow pt-4 overflow-y-auto overflow-x-hidden">
 
-                {/* [MODIFIKASI UTAMA] Prioritaskan Super Admin di atas segalanya */}
                 {user.role === 'superadmin' ? (
-                    // --- TAMPILAN KHUSUS HANYA UNTUK SUPERADMIN ---
                     <NavLink
                         href={route('users.index')}
                         active={route().current('users.*')}
@@ -85,7 +183,6 @@ export default function Sidebar({ user, isSidebarOpen, toggleSidebar, isCmsMode 
                     >
                         User Management
                     </NavLink>
-
                 ) : isCmsMode ? (
                     // --- TAMPILAN MODE CMS (HANYA UNTUK ADMIN) ---
                     <>
@@ -128,32 +225,32 @@ export default function Sidebar({ user, isSidebarOpen, toggleSidebar, isCmsMode 
                             </button>
                             {isSidebarOpen && isReportsOpen && (
                                 <div className="pl-8 pr-4 py-2 flex flex-col space-y-1 bg-gray-50 border-t border-b">
-                                        {/* --- Sub-Dropdown: Report Digital Product --- */}
-                                        <div>
-                                            <button onClick={() => setIsDigitalProductOpen(!isDigitalProductOpen)} className="w-full flex items-center justify-between px-4 py-2 text-sm rounded-md text-gray-700 hover:bg-gray-200">
-                                                <span>Report Digital Product</span>
-                                                <MdKeyboardArrowDown size={18} className={`transition-transform duration-300 ${isDigitalProductOpen ? 'rotate-180' : ''}`} />
-                                            </button>
-                                            {isDigitalProductOpen && (
-                                                <div className="pl-6 mt-1 space-y-1">
-                                                    <Link href={route('data-report.index')} className={`block px-4 py-2 text-sm rounded-md ${route().current('data-report.index') ? 'bg-blue-100 text-blue-700 font-semibold' : 'hover:bg-gray-100'}`}>Data Report</Link>
-                                                    <Link href={route('galaksi.index')} className={`block px-4 py-2 text-sm rounded-md ${route().current('galaksi.index') ? 'bg-blue-100 text-blue-700 font-semibold' : 'hover:bg-gray-100'}`}>Galaksi</Link>
-                                                </div>
-                                            )}
-                                        </div>
-                                        {/* --- Sub-Dropdown: Report SOS --- */}
-                                        <div>
-                                            <button onClick={() => setIsSosOpen(!isSosOpen)} className="w-full flex items-center justify-between px-4 py-2 text-sm rounded-md text-gray-700 hover:bg-gray-200">
-                                                <span>Report SOS</span>
-                                                <MdKeyboardArrowDown size={18} className={`transition-transform duration-300 ${isSosOpen ? 'rotate-180' : ''}`} />
-                                            </button>
-                                            {isSosOpen && (
-                                                <div className="pl-6 mt-1 space-y-1">
-                                                    <Link href="#" className="block px-4 py-2 text-sm text-gray-400 cursor-not-allowed rounded-md">Data Report</Link>
-                                                    <Link href="#" className="block px-4 py-2 text-sm text-gray-400 cursor-not-allowed rounded-md">Galaksi</Link>
-                                                </div>
-                                            )}
-                                        </div>
+                                    {/* --- Sub-Dropdown: Report Digital Product --- */}
+                                    <div>
+                                        <button onClick={() => setIsDigitalProductOpen(!isDigitalProductOpen)} className="w-full flex items-center justify-between px-4 py-2 text-sm rounded-md text-gray-700 hover:bg-gray-200">
+                                            <span>Report Digital Product</span>
+                                            <MdKeyboardArrowDown size={18} className={`transition-transform duration-300 ${isDigitalProductOpen ? 'rotate-180' : ''}`} />
+                                        </button>
+                                        {isDigitalProductOpen && (
+                                            <div className="pl-6 mt-1 space-y-1">
+                                                <Link href={route('data-report.index')} className={`block px-4 py-2 text-sm rounded-md ${route().current('data-report.index') ? 'bg-blue-100 text-blue-700 font-semibold' : 'hover:bg-gray-100'}`}>Data Report</Link>
+                                                <Link href={route('galaksi.index')} className={`block px-4 py-2 text-sm rounded-md ${route().current('galaksi.index') ? 'bg-blue-100 text-blue-700 font-semibold' : 'hover:bg-gray-100'}`}>Galaksi</Link>
+                                            </div>
+                                        )}
+                                    </div>
+                                    {/* --- Sub-Dropdown: Report SOS --- */}
+                                    <div>
+                                        <button onClick={() => setIsSosOpen(!isSosOpen)} className="w-full flex items-center justify-between px-4 py-2 text-sm rounded-md text-gray-700 hover:bg-gray-200">
+                                            <span>Report SOS</span>
+                                            <MdKeyboardArrowDown size={18} className={`transition-transform duration-300 ${isSosOpen ? 'rotate-180' : ''}`} />
+                                        </button>
+                                        {isSosOpen && (
+                                            <div className="pl-6 mt-1 space-y-1">
+                                                <Link href="#" className="block px-4 py-2 text-sm text-gray-400 cursor-not-allowed rounded-md">Data Report</Link>
+                                                <Link href="#" className="block px-4 py-2 text-sm text-gray-400 cursor-not-allowed rounded-md">Galaksi</Link>
+                                            </div>
+                                        )}
+                                    </div>
                                 </div>
                             )}
                         </div>

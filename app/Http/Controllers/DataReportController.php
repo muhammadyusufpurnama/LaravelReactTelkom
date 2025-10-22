@@ -37,7 +37,7 @@ class DataReportController extends Controller
 
         // [LOGIKA UTAMA] Ambil data untuk KEDUA segmen untuk ditampilkan
         $smeReportData = $this->getReportDataForSegment('SME', $reportPeriod);
-        $legsReportData = $this->getReportDataForSegment('LEGS', 'all'); // 'all' untuk mengambil data sepanjang tahun
+        $legsReportData = $this->getReportDataForSegment('LEGS', $reportPeriod); // 'all' untuk mengambil data sepanjang tahun
 
         // Ambil data In Progress untuk tabel detail, dengan filter
         $inProgressData = DocumentData::query()
@@ -60,7 +60,7 @@ class DataReportController extends Controller
             'smeReportData' => $smeReportData,
             'legsReportData' => $legsReportData,
             'inProgressData' => $inProgressData,
-            'filters' => $request->only(['month', 'year', 'witel']),
+            'filters' => $request->only(['month', 'year', 'witel', 'segment']),
             'smeConfig' => $smeConfigRecord ? $smeConfigRecord->configuration : null,
             'legsConfig' => $legsConfigRecord ? $legsConfigRecord->configuration : null,
             'filterOptions' => ['witelList' => $witelList],

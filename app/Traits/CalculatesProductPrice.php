@@ -2,6 +2,8 @@
 
 namespace App\Traits;
 
+use Illuminate\Support\Facades\Log;
+
 trait CalculatesProductPrice
 {
     /**
@@ -28,7 +30,6 @@ trait CalculatesProductPrice
             //     // Harga default untuk Netmonk di segmen lain (misal: SME)
             //     return 21600;
             // }
-
         }
 
         if (stripos($lowerProductName, 'OCA') !== false) {
@@ -42,6 +43,8 @@ trait CalculatesProductPrice
         if (stripos($lowerProductName, 'pijar') !== false) {
             return 582750;
         }
+
+        Log::warning("TEMPLATE TIDAK DITEMUKAN: Gagal mencari harga untuk Produk='{$productName}'");
 
         return 0; // Default jika tidak ada keyword yang cocok
     }

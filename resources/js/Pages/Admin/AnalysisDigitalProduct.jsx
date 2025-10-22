@@ -4,21 +4,17 @@ import { Head, useForm, usePage, router, Link } from "@inertiajs/react";
 import InputLabel from "@/Components/InputLabel";
 import InputError from "@/Components/InputError";
 import PrimaryButton from "@/Components/PrimaryButton";
+import NetPriceTable from '@/Components/NetPriceTable';
+import CompleteTable from '@/Components/CompleteTable';
+import InProgressAnalysisTable from '@/Components/InProgressAnalysisTable';
+import QcTable from '@/Components/QcTable';
+import HistoryTable from '@/Components/HistoryTable';
+import KPIPOAnalysisTable from '@/Components/KPIPOAnalysisTable';
+import TableConfigurator from '@/Components/TableConfigurator';
+import { smeTableConfigTemplate, legsTableConfigTemplate } from '@/config/tableConfigTemplates';
+import EditReportForm from '@/Components/EditReportForm';
+import SmeReportTable from '@/Components/SmeReportTable';
 import axios from "axios";
-import {
-    DndContext,
-    closestCenter,
-    KeyboardSensor,
-    PointerSensor,
-    useSensor,
-    useSensors,
-} from "@dnd-kit/core";
-import {
-    arrayMove,
-    SortableContext,
-    sortableKeyboardCoordinates,
-    horizontalListSortingStrategy,
-} from "@dnd-kit/sortable";
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { debounce } from "lodash";
@@ -32,15 +28,27 @@ import withReactContent from 'sweetalert2-react-content';
 
 const MySwal = withReactContent(Swal);
 
-const Pagination = ({ links = [] }) => {
+const Pagination = ({ links = [], activeView }) => {
     if (links.length <= 3) return null;
+
+    const appendTabViewToUrl = (url) => {
+        if (!url || !activeView) return url;
+        try {
+            const urlObject = new URL(url);
+            urlObject.searchParams.set('tab', activeView);
+            return urlObject.toString();
+        } catch (error) {
+            console.error("URL Pagination tidak valid:", url);
+            return url;
+        }
+    };
 
     return (
         <div className="flex flex-wrap justify-center items-center mt-4 space-x-1">
             {links.map((link, index) => (
                 <Link
                     key={index}
-                    href={link.url ?? "#"}
+                    href={appendTabViewToUrl(link.url) ?? "#"}
                     className={`px-3 py-2 text-sm border rounded hover:bg-blue-600 hover:text-white transition-colors ${link.active ? "bg-blue-600 text-white" : "bg-white text-gray-700"} ${!link.url ? "text-gray-400 cursor-not-allowed" : ""}`}
                     dangerouslySetInnerHTML={{ __html: link.label }}
                     preserveScroll
@@ -51,23 +59,22 @@ const Pagination = ({ links = [] }) => {
     );
 };
 
-const formatPercent = (value) => {
-    const num = Number(value);
-    if (!isFinite(num) || num === 0) return "0.0%";
-    return `${num.toFixed(1)}%`;
-};
-const formatRupiah = (value, decimals = 2) =>
-    (Number(value) || 0).toFixed(decimals);
-const formatNumber = (value) => Number(value) || 0;
-const formatDate = (dateString) => {
-    if (!dateString) return "-";
-    return new Date(dateString).toLocaleString("id-ID", {
-        year: "numeric",
-        month: "2-digit",
-        day: "2-digit",
-        hour: "2-digit",
-        minute: "2-digit",
-    });
+const DetailTabButton = ({ viewName, currentView, children }) => {
+    const { filters } = usePage().props;
+    const newParams = { ...filters, tab: viewName };
+    delete newParams.page; // Kembali ke halaman 1 saat ganti tab
+
+    return (
+        <Link
+            href={route("admin.analysisDigitalProduct.index", newParams)}
+            className={`px-4 py-2 text-sm font-semibold rounded-md transition-colors ${currentView === viewName ? "bg-blue-600 text-white shadow" : "bg-white text-gray-600 hover:bg-gray-100"}`}
+            preserveState
+            preserveScroll
+            replace
+        >
+            {children}
+        </Link>
+    );
 };
 
 const CollapsibleCard = ({ title, isExpanded, onToggle, children }) => {
@@ -143,146 +150,6 @@ const ProgressBar = ({ progress, text }) => (
         </div>
     </div>
 );
-
-// ===================================================================
-// Form Components
-// ===================================================================
-
-const EditReportForm = ({ currentSegment, reportData, period }) => {
-    const [isExpanded, setIsExpanded] = useState(false);
-
-    const witelList = useMemo(() => {
-        if (!Array.isArray(reportData)) return [];
-        return Array.from(new Set(reportData.map((item) => item.nama_witel)));
-    }, [reportData]);
-
-    const products = [
-        { key: "n", label: "Netmonk" }, { key: "o", label: "OCA" },
-        { key: "ae", label: "Antares" }, { key: "ps", label: "Pijar Sekolah" },
-    ];
-
-    const { data, setData, post, processing, errors } = useForm({
-        targets: {},
-        segment: currentSegment,
-        period: period + "-01",
-    });
-
-    useEffect(() => {
-        const initialTargets = {};
-        reportData.forEach((item) => {
-            initialTargets[item.nama_witel] = {
-                prov_comp: {
-                    n: item.prov_comp_n_target || 0, o: item.prov_comp_o_target || 0,
-                    ae: item.prov_comp_ae_target || 0, ps: item.prov_comp_ps_target || 0,
-                },
-                revenue: {
-                    n: item.revenue_n_target || 0, o: item.revenue_o_target || 0,
-                    ae: item.revenue_ae_target || 0, ps: item.revenue_ps_target || 0,
-                },
-            };
-        });
-        setData((currentData) => ({ ...currentData, targets: initialTargets }));
-    }, [reportData]);
-
-    useEffect(() => {
-        setData((currentData) => ({
-            ...currentData,
-            segment: currentSegment,
-            period: period + "-01",
-        }));
-    }, [currentSegment, period]);
-
-    function submit(e) {
-        e.preventDefault();
-        post(route("admin.analysisDigitalProduct.targets"), { preserveScroll: true });
-    }
-
-    const handleInputChange = (witel, metric, product, value) => {
-        setData("targets", {
-            ...data.targets,
-            [witel]: {
-                ...data.targets[witel],
-                [metric]: {
-                    ...data.targets[witel]?.[metric],
-                    [product]: value,
-                },
-            },
-        });
-    };
-
-    return (
-        <form onSubmit={submit} className="bg-white p-6 rounded-lg shadow-md text-sm">
-            <div className="flex justify-between items-center cursor-pointer mb-4" onClick={() => setIsExpanded(!isExpanded)}>
-                <h3 className="font-semibold text-lg text-gray-800">Edit Target</h3>
-                <button type="button" className="text-blue-600 text-sm font-bold hover:underline p-2">
-                    {isExpanded ? "Minimize" : "Expand"}
-                </button>
-            </div>
-
-            {isExpanded && (
-                <div className="mt-4">
-                    {currentSegment === "SME" && (
-                        <fieldset className="mb-4 border rounded-md p-3">
-                            <legend className="text-base font-semibold px-2">Prov Comp Targets</legend>
-                            {witelList.map((witel) => (
-                                <div key={`${witel}-prov`} className="mb-3">
-                                    <h4 className="font-bold text-gray-600">{witel}</h4>
-
-                                    {/* [PERBAIKAN 1] */}
-                                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mt-2 mb-1 px-1">
-                                        {products.map((p) => <label key={p.key} className="text-xs font-semibold text-gray-500">{p.label}</label>)}
-                                    </div>
-
-                                    {/* [PERBAIKAN 2] */}
-                                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                                        {products.map((p) => (
-                                            <input
-                                                key={p.key} type="number"
-                                                value={data.targets[witel]?.prov_comp?.[p.key] ?? ""}
-                                                onChange={(e) => handleInputChange(witel, "prov_comp", p.key, e.target.value)}
-                                                placeholder={p.label} className="p-1 border rounded w-full"
-                                            />
-                                        ))}
-                                    </div>
-                                </div>
-                            ))}
-                        </fieldset>
-                    )}
-
-                    <fieldset className="border rounded-md p-3">
-                        <legend className="text-base font-semibold px-2">Revenue Targets (Rp Juta)</legend>
-                        {witelList.map((witel) => (
-                            <div key={`${witel}-rev`} className="mb-3">
-                                <h4 className="font-bold text-gray-600">{witel}</h4>
-
-                                {/* [PERBAIKAN 3] */}
-                                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mt-2 mb-1 px-1">
-                                    {products.map((p) => <label key={p.key} className="text-xs font-semibold text-gray-500">{p.label}</label>)}
-                                </div>
-
-                                {/* [PERBAIKAN 4] */}
-                                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                                    {products.map((p) => (
-                                        <input
-                                            key={p.key} type="number" step="0.01"
-                                            value={data.targets[witel]?.revenue?.[p.key] ?? ""}
-                                            onChange={(e) => handleInputChange(witel, "revenue", p.key, e.target.value)}
-                                            placeholder={p.label} className="p-1 border rounded w-full"
-                                        />
-                                    ))}
-                                </div>
-                            </div>
-                        ))}
-                    </fieldset>
-
-                    <button type="submit" disabled={processing} className="w-full mt-4 px-4 py-2 bg-blue-600 text-white font-semibold rounded-md hover:bg-blue-700 disabled:bg-blue-400">
-                        {processing ? "Menyimpan..." : "Simpan Target"}
-                    </button>
-                </div>
-            )}
-        </form>
-    );
-};
 
 const AgentFormModal = ({ isOpen, onClose, agent }) => {
     const { data, setData, post, put, processing, errors, reset } = useForm({
@@ -444,2457 +311,6 @@ const AgentFormModal = ({ isOpen, onClose, agent }) => {
     );
 };
 
-// ===================================================================
-// Main Table Components
-// ===================================================================
-
-const SmeReportTable = ({
-    data = [],
-    decimalPlaces,
-    tableConfig,
-    setTableConfig,
-}) => {
-    const sensors = useSensors(
-        useSensor(PointerSensor),
-        useSensor(KeyboardSensor, {
-            coordinateGetter: sortableKeyboardCoordinates,
-        }),
-    );
-
-    const findColumnDefinition = (keyToFind) => {
-        for (const group of tableConfig) {
-            for (const col of group.columns) {
-                if (col.key === keyToFind)
-                    return { colDef: col, parentColDef: null };
-                if (col.subColumns) {
-                    for (const subCol of col.subColumns) {
-                        if (col.key + subCol.key === keyToFind) {
-                            return { colDef: subCol, parentColDef: col };
-                        }
-                    }
-                }
-            }
-        }
-        return { colDef: null, parentColDef: null };
-    };
-
-    const getCellValue = (item, columnDef, parentColumnDef = null) => {
-        const fullKey = parentColumnDef
-            ? parentColumnDef.key + columnDef.key
-            : columnDef.key;
-
-        if (columnDef.type === "calculation") {
-            const { operation, operands } = columnDef.calculation;
-            const values = operands.map((opKey) => {
-                const { colDef: opDef, parentColDef: opParentDef } =
-                    findColumnDefinition(opKey);
-                if (!opDef) return 0;
-                return opDef.type === "calculation"
-                    ? getCellValue(item, opDef, opParentDef)
-                    : formatNumber(item[opKey]);
-            });
-
-            switch (operation) {
-                case "percentage":
-                    const [numerator, denominator] = values;
-                    if (denominator === 0) return formatPercent(0);
-                    return formatPercent((numerator / denominator) * 100);
-                case "sum":
-                    return formatNumber(values.reduce((a, b) => a + b, 0));
-                case "average":
-                    if (values.length === 0) return 0;
-                    return formatNumber(
-                        values.reduce((a, b) => a + b, 0) / values.length,
-                    );
-                case "count":
-                    return values.filter((v) => v !== 0).length;
-                default:
-                    return "N/A";
-            }
-        }
-
-        if (fullKey.startsWith("revenue_")) {
-            return formatRupiah(item[fullKey], decimalPlaces);
-        }
-        return formatNumber(item[fullKey]);
-    };
-
-    const totals = useMemo(() => {
-        const initialTotals = {};
-        tableConfig.forEach((group) => {
-            group.columns.forEach((col) => {
-                if (col.subColumns) {
-                    col.subColumns.forEach((sc) => {
-                        if (sc.type !== "calculation") {
-                            const key = col.key + sc.key;
-                            initialTotals[key] = data.reduce(
-                                (sum, item) => sum + formatNumber(item[key]),
-                                0,
-                            );
-                        }
-                    });
-                } else if (col.type !== "calculation") {
-                    const key = col.key;
-                    initialTotals[key] = data.reduce(
-                        (sum, item) => sum + formatNumber(item[key]),
-                        0,
-                    );
-                }
-            });
-        });
-        return initialTotals;
-    }, [data, tableConfig]);
-
-    const handleDragEnd = (event) => {
-        const { active, over } = event;
-        if (!over || active.id === over.id) return;
-
-        const activeType = active.data.current?.type;
-        const overType = over.data.current?.type;
-
-        if (activeType === "group" && overType === "group") {
-            setTableConfig((config) => {
-                const oldIndex = config.findIndex(
-                    (g) => g.groupTitle === active.id,
-                );
-                const newIndex = config.findIndex(
-                    (g) => g.groupTitle === over.id,
-                );
-                return arrayMove(config, oldIndex, newIndex);
-            });
-        } else if (activeType === "column" && overType === "column") {
-            const parentGroupTitle = active.data.current?.parentGroupTitle;
-            const overParentGroupTitle = over.data.current?.parentGroupTitle;
-
-            if (parentGroupTitle !== overParentGroupTitle) return;
-
-            setTableConfig((config) => {
-                const newConfig = JSON.parse(JSON.stringify(config));
-                const group = newConfig.find(
-                    (g) => g.groupTitle === parentGroupTitle,
-                );
-                if (!group) return config;
-
-                const getColKey = (id) => id.toString().split(".").pop();
-                const activeColKey = getColKey(active.id);
-                const overColKey = getColKey(over.id);
-
-                const oldIndex = group.columns.findIndex(
-                    (c) => c.key === activeColKey,
-                );
-                const newIndex = group.columns.findIndex(
-                    (c) => c.key === overColKey,
-                );
-
-                if (oldIndex !== -1 && newIndex !== -1) {
-                    group.columns = arrayMove(
-                        group.columns,
-                        oldIndex,
-                        newIndex,
-                    );
-                }
-                return newConfig;
-            });
-        }
-        // [NEW] Add this 'else if' block to handle sub-column dragging
-        else if (activeType === "sub-column" && overType === "sub-column") {
-            const parentGroupTitle = active.data.current?.parentGroupTitle;
-            const overParentGroupTitle = over.data.current?.parentGroupTitle;
-            const parentColumnKey = active.data.current?.parentColumnKey;
-            const overParentColumnKey = over.data.current?.parentColumnKey;
-
-            // Only allow reordering within the same parent column (e.g., within 'N' or 'O')
-            if (
-                parentGroupTitle !== overParentGroupTitle ||
-                parentColumnKey !== overParentColumnKey
-            ) {
-                return;
-            }
-
-            setTableConfig((config) => {
-                const newConfig = JSON.parse(JSON.stringify(config));
-                const group = newConfig.find(
-                    (g) => g.groupTitle === parentGroupTitle,
-                );
-                if (!group) return config;
-
-                const parentCol = group.columns.find(
-                    (c) => c.key === parentColumnKey,
-                );
-                if (!parentCol || !parentCol.subColumns) return config;
-
-                const getSubColKey = (id) => id.toString().split(".").pop();
-                const activeSubColKey = getSubColKey(active.id);
-                const overSubColKey = getSubColKey(over.id);
-
-                const oldIndex = parentCol.subColumns.findIndex(
-                    (sc) => sc.key === activeSubColKey,
-                );
-                const newIndex = parentCol.subColumns.findIndex(
-                    (sc) => sc.key === overSubColKey,
-                );
-
-                if (oldIndex !== -1 && newIndex !== -1) {
-                    parentCol.subColumns = arrayMove(
-                        parentCol.subColumns,
-                        oldIndex,
-                        newIndex,
-                    );
-                }
-
-                return newConfig;
-            });
-        }
-    };
-
-    const DraggableHeaderCell = ({ group }) => {
-        const { attributes, listeners, setNodeRef, transform, transition } =
-            useSortable({ id: group.groupTitle, data: { type: "group" } });
-        const style = {
-            transform: CSS.Transform.toString(transform),
-            transition,
-        };
-        const colSpan = group.columns.reduce(
-            (sum, col) => sum + (col.subColumns?.length || 1),
-            0,
-        );
-
-        return (
-            <th
-                ref={setNodeRef}
-                style={style}
-                {...attributes}
-                {...listeners}
-                className={`border p-2 ${group.groupClass} cursor-grab`}
-                colSpan={colSpan}
-            >
-                {group.groupTitle}
-            </th>
-        );
-    };
-
-    const DraggableColumnHeader = ({ group, col }) => {
-        const uniqueId = `${group.groupTitle}.${col.key}`;
-        const { attributes, listeners, setNodeRef, transform, transition } =
-            useSortable({
-                id: uniqueId,
-                data: { type: "column", parentGroupTitle: group.groupTitle },
-            });
-        const style = {
-            transform: CSS.Transform.toString(transform),
-            transition,
-        };
-        return (
-            <th
-                ref={setNodeRef}
-                style={style}
-                {...attributes}
-                {...listeners}
-                key={col.key}
-                className={`border p-2 ${group.columnClass || "bg-gray-700"} cursor-grab`}
-                colSpan={col.subColumns?.length || 1}
-                rowSpan={col.subColumns ? 1 : 2}
-            >
-                {col.title}
-            </th>
-        );
-    };
-
-    const DraggableSubColumnHeader = ({ group, col, subCol }) => {
-        const uniqueId = `${group.groupTitle}.${col.key}.${subCol.key}`;
-        const { attributes, listeners, setNodeRef, transform, transition } =
-            useSortable({
-                id: uniqueId,
-                data: {
-                    type: "sub-column", // A new type to identify these headers
-                    parentGroupTitle: group.groupTitle,
-                    parentColumnKey: col.key,
-                },
-            });
-        const style = {
-            transform: CSS.Transform.toString(transform),
-            transition,
-        };
-
-        return (
-            <th
-                ref={setNodeRef}
-                style={style}
-                {...attributes}
-                {...listeners}
-                key={uniqueId}
-                className={`border p-1 ${group.subColumnClass || "bg-gray-600"} cursor-grab`}
-            >
-                {subCol.title}
-            </th>
-        );
-    };
-
-    return (
-        <DndContext
-            sensors={sensors}
-            collisionDetection={closestCenter}
-            onDragEnd={handleDragEnd}
-        >
-            <div className="overflow-x-auto text-xs">
-                <table className="w-full border-collapse text-center">
-                    <thead className="bg-gray-800 text-white">
-                        <tr>
-                            <th className="border p-2 align-middle" rowSpan={3}>
-                                WILAYAH TELKOM
-                            </th>
-                            <SortableContext
-                                items={tableConfig.map((g) => g.groupTitle)}
-                                strategy={horizontalListSortingStrategy}
-                            >
-                                {tableConfig.map((group) => (
-                                    <DraggableHeaderCell
-                                        key={group.groupTitle}
-                                        group={group}
-                                    />
-                                ))}
-                            </SortableContext>
-                        </tr>
-                        <tr className="font-semibold">
-                            {tableConfig.map((group) => (
-                                <SortableContext
-                                    key={`${group.groupTitle}-cols`}
-                                    items={group.columns.map(
-                                        (c) => `${group.groupTitle}.${c.key}`,
-                                    )}
-                                    strategy={horizontalListSortingStrategy}
-                                >
-                                    {group.columns.map((col) => (
-                                        <DraggableColumnHeader
-                                            key={col.key}
-                                            group={group}
-                                            col={col}
-                                        />
-                                    ))}
-                                </SortableContext>
-                            ))}
-                        </tr>
-                        <tr className="font-medium">
-                            {tableConfig.map((group) =>
-                                group.columns.map((col) =>
-                                    col.subColumns ? (
-                                        // Each set of sub-columns gets its own SortableContext
-                                        <SortableContext
-                                            key={`${group.groupTitle}-${col.key}-subcols`}
-                                            items={col.subColumns.map(
-                                                (sc) =>
-                                                    `${group.groupTitle}.${col.key}.${sc.key}`,
-                                            )}
-                                            strategy={
-                                                horizontalListSortingStrategy
-                                            }
-                                        >
-                                            {col.subColumns.map((subCol) => (
-                                                <DraggableSubColumnHeader
-                                                    key={subCol.key}
-                                                    group={group}
-                                                    col={col}
-                                                    subCol={subCol}
-                                                />
-                                            ))}
-                                        </SortableContext>
-                                    ) : null,
-                                ),
-                            )}
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {data.length > 0 ? (
-                            data.map((item) => (
-                                <tr
-                                    key={item.nama_witel}
-                                    className="bg-white hover:bg-gray-50 text-black"
-                                >
-                                    <td className="border p-2 font-semibold text-left">
-                                        {item.nama_witel}
-                                    </td>
-                                    {tableConfig.map((group) =>
-                                        group.columns.map((col) =>
-                                            col.subColumns ? (
-                                                col.subColumns.map((subCol) => (
-                                                    <td
-                                                        key={`${item.nama_witel}-${col.key}-${subCol.key}`}
-                                                        className={`border p-2 ${subCol.cellClassName || ""}`}
-                                                    >
-                                                        {getCellValue(
-                                                            item,
-                                                            subCol,
-                                                            col,
-                                                        )}
-                                                    </td>
-                                                ))
-                                            ) : (
-                                                <td
-                                                    key={`${item.nama_witel}-${col.key}`}
-                                                    className={`border p-2 ${col.cellClassName || ""}`}
-                                                >
-                                                    {getCellValue(item, col)}
-                                                </td>
-                                            ),
-                                        ),
-                                    )}
-                                </tr>
-                            ))
-                        ) : (
-                            <tr>
-                                <td
-                                    colSpan={100}
-                                    className="text-center p-4 border text-gray-500"
-                                >
-                                    Tidak ada data.
-                                </td>
-                            </tr>
-                        )}
-                        <tr className="font-bold text-white">
-                            <td className="border p-2 text-left bg-gray-800">
-                                GRAND TOTAL
-                            </td>
-                            {tableConfig.map((group) =>
-                                group.columns.map((col) =>
-                                    col.subColumns ? (
-                                        col.subColumns.map((subCol) => (
-                                            <td
-                                                key={`total-${col.key}-${subCol.key}`}
-                                                className={`border p-2 ${group.groupClass}`}
-                                            >
-                                                {getCellValue(
-                                                    totals,
-                                                    subCol,
-                                                    col,
-                                                )}
-                                            </td>
-                                        ))
-                                    ) : (
-                                        <td
-                                            key={`total-${col.key}`}
-                                            className={`border p-2 ${group.groupClass}`}
-                                        >
-                                            {getCellValue(totals, col)}
-                                        </td>
-                                    ),
-                                ),
-                            )}
-                        </tr>
-                    </tbody>
-                </table>
-            </div>
-        </DndContext>
-    );
-};
-
-const InProgressTable = ({
-    dataPaginator = { data: [], links: [], from: 0 },
-}) => {
-    const handleCompleteClick = async (orderId) => {
-        const result = await MySwal.fire({
-            title: 'Konfirmasi Order Selesai',
-            text: `Anda yakin ingin mengubah status Order ID ${orderId} menjadi "COMPLETE"?`,
-            icon: 'question',
-            showCancelButton: true,
-            confirmButtonColor: '#28a745',
-            cancelButtonColor: '#6c757d',
-            confirmButtonText: 'Ya, Selesaikan!',
-            cancelButtonText: 'Batal'
-        });
-
-        if (result.isConfirmed) {
-            router.put(
-                route("admin.manual.update.complete", { order_id: orderId }),
-                {},
-                {
-                    preserveScroll: true,
-                    onSuccess: () => {
-                        toast.success(`Order ID ${orderId} berhasil di-complete.`);
-                        router.reload({ preserveState: false });
-                    },
-                    onError: () => toast.error(`Gagal mengubah status Order ID ${orderId}.`)
-                },
-            );
-        }
-    };
-    const handleCancelClick = async (orderId) => {
-        const result = await MySwal.fire({
-            title: 'Konfirmasi Pembatalan',
-            text: `Anda yakin ingin mengubah status Order ID ${orderId} menjadi "CANCEL"?`,
-            icon: 'warning',
-            showCancelButton: true,
-            confirmButtonColor: '#d33',
-            cancelButtonColor: '#6c757d',
-            confirmButtonText: 'Ya, Batalkan!',
-            cancelButtonText: 'Kembali'
-        });
-
-        if (result.isConfirmed) {
-            router.put(
-                route("admin.manual.update.cancel", { order_id: orderId }),
-                {},
-                {
-                    preserveScroll: true,
-                    onSuccess: () => {
-                        toast.success(`Order ID ${orderId} berhasil di-cancel.`);
-                        router.reload({ preserveState: false });
-                    },
-                    onError: () => toast.error(`Gagal membatalkan Order ID ${orderId}.`)
-                },
-            );
-        }
-    };
-    return (
-        <>
-            <div className="overflow-x-auto text-sm">
-                <table className="w-full">
-                    <thead className="bg-gray-50">
-                        <tr className="text-left font-semibold text-gray-600">
-                            <th className="p-3">No.</th>
-                            <th className="p-3">Milestone</th>
-                            <th className="p-3">Status Order</th>
-                            <th className="p-3">Product Name</th>
-                            <th className="p-3">Order ID</th>
-                            <th className="p-3">Witel</th>
-                            <th className="p-3">Customer Name</th>
-                            <th className="p-3">Order Created Date</th>
-                            <th className="p-3 text-center">Action</th>
-                        </tr>
-                    </thead>
-                    <tbody className="divide-y bg-white">
-                        {dataPaginator.data.length > 0 ? (
-                            dataPaginator.data.map((item, index) => (
-                                <tr
-                                    key={item.order_id}
-                                    className="text-gray-700 hover:bg-gray-50"
-                                >
-                                    <td className="p-3">
-                                        {dataPaginator.from + index}
-                                    </td>
-                                    <td className="p-3">{item.milestone}</td>
-                                    <td className="p-3 whitespace-nowrap">
-                                        <span className="px-2 py-1 font-semibold leading-tight text-blue-700 bg-blue-100 rounded-full">
-                                            {item.order_status_n}
-                                        </span>
-                                    </td>
-                                    <td className="p-3">
-                                        {item.product_name ?? item.product}
-                                    </td>
-                                    <td className="p-3 font-mono">
-                                        {item.order_id}
-                                    </td>
-                                    <td className="p-3">{item.nama_witel}</td>
-                                    <td className="p-3">
-                                        {item.customer_name}
-                                    </td>
-                                    <td className="p-3">
-                                        {formatDate(item.order_created_date)}
-                                    </td>
-                                    <td className="p-3 text-center">
-                                        <div className="flex justify-center items-center gap-2">
-                                            <button
-                                                onClick={() =>
-                                                    handleCompleteClick(
-                                                        item.order_id,
-                                                    )
-                                                }
-                                                className="px-3 py-1 text-xs font-bold text-white bg-green-500 rounded-md hover:bg-green-600"
-                                            >
-                                                COMPLETE
-                                            </button>
-                                            <button
-                                                onClick={() =>
-                                                    handleCancelClick(
-                                                        item.order_id,
-                                                    )
-                                                }
-                                                className="px-3 py-1 text-xs font-bold text-white bg-red-500 rounded-md hover:bg-red-600"
-                                            >
-                                                CANCEL
-                                            </button>
-                                        </div>
-                                    </td>
-                                </tr>
-                            ))
-                        ) : (
-                            <tr>
-                                <td
-                                    colSpan="9"
-                                    className="p-4 text-center text-gray-500"
-                                >
-                                    Tidak ada data yang sesuai dengan filter.
-                                </td>
-                            </tr>
-                        )}
-                    </tbody>
-                </table>
-            </div>
-            <Pagination links={dataPaginator.links} />
-        </>
-    );
-};
-
-const CompleteTable = ({ dataPaginator = { data: [], links: [] } }) => {
-    const handleSetInProgress = async (orderId) => {
-        const result = await MySwal.fire({
-            title: 'Kembalikan ke In Progress?',
-            text: `Anda yakin ingin mengembalikan Order ID ${orderId} ke status "In Progress"?`,
-            icon: 'question',
-            showCancelButton: true,
-            confirmButtonColor: '#007bff',
-            cancelButtonColor: '#6c757d',
-            confirmButtonText: 'Ya, Kembalikan!',
-            cancelButtonText: 'Batal'
-        });
-
-        if (result.isConfirmed) {
-            router.put(
-                route("admin.complete.update.progress", { documentData: orderId }),
-                {},
-                {
-                    preserveScroll: true,
-                    onSuccess: () => {
-                        toast.info(`Order ${orderId} dikembalikan ke In Progress.`);
-                        router.reload({ preserveState: false });
-                    },
-                    onError: () => toast.error('Gagal mengubah status.')
-                },
-            );
-        }
-    };
-    const handleSetCancel = async (orderId) => {
-        const result = await MySwal.fire({
-            title: 'Ubah ke Cancel?',
-            text: `Anda yakin ingin mengubah status Order ID ${orderId} menjadi "Cancel"?`,
-            icon: 'warning',
-            showCancelButton: true,
-            confirmButtonColor: '#d33',
-            cancelButtonColor: '#6c757d',
-            confirmButtonText: 'Ya, Ubah ke Cancel!',
-            cancelButtonText: 'Batal'
-        });
-
-        if (result.isConfirmed) {
-            router.put(
-                route("admin.complete.update.cancel", { documentData: orderId }),
-                {},
-                {
-                    preserveScroll: true,
-                    onSuccess: () => {
-                        toast.success(`Order ${orderId} berhasil diubah ke Cancel.`);
-                        router.reload({ preserveState: false });
-                    },
-                    onError: () => toast.error('Gagal mengubah status.')
-                },
-            );
-        }
-    };
-
-    // [TAMBAHKAN] Fungsi baru untuk mengirim order ke QC
-    const handleSetQc = async (orderId) => {
-        const result = await MySwal.fire({
-            title: 'Kirim Kembali ke QC?',
-            text: `Anda yakin ingin mengirim Order ID ${orderId} kembali ke proses QC? Status WFM akan dikosongkan.`,
-            icon: 'warning',
-            showCancelButton: true,
-            confirmButtonColor: '#ffc107',
-            cancelButtonColor: '#6c757d',
-            confirmButtonText: 'Ya, Kirim ke QC!',
-            cancelButtonText: 'Batal',
-            customClass: {
-                confirmButton: 'text-black'
-            }
-        });
-
-        if (result.isConfirmed) {
-            router.put(
-                route("admin.complete.update.qc", { documentData: orderId }),
-                {},
-                {
-                    preserveScroll: true,
-                    onSuccess: () => {
-                        toast.info(`Order ${orderId} dikirim kembali ke QC.`);
-                        router.reload({ preserveState: false });
-                    },
-                    onError: () => toast.error('Gagal mengirim ke QC.')
-                },
-            );
-        }
-    };
-
-    return (
-        <>
-            <div className="overflow-x-auto text-sm">
-                <p className="text-gray-500 mb-2">
-                    Menampilkan data order yang sudah berstatus "Complete".
-                </p>
-                <table className="w-full">
-                    <thead className="bg-gray-50">
-                        <tr className="text-left font-semibold text-gray-600">
-                            <th className="p-3">No.</th>
-                            <th className="p-3">Milestone</th>
-                            <th className="p-3">Order ID</th>
-                            <th className="p-3">Product Name</th>
-                            <th className="p-3">Witel</th>
-                            <th className="p-3">Customer Name</th>
-                            <th className="p-3">Update Time</th>
-                            <th className="p-3 text-center">Aksi</th>
-                        </tr>
-                    </thead>
-                    <tbody className="divide-y bg-white">
-                        {dataPaginator.data.length > 0 ? (
-                            dataPaginator.data.map((item, index) => (
-                                <tr
-                                    key={item.order_id}
-                                    className="text-gray-700 hover:bg-gray-50"
-                                >
-                                    <td className="p-3">
-                                        {dataPaginator.from + index}
-                                    </td>
-                                    <td className="p-3">{item.milestone}</td>
-                                    <td className="p-3 font-mono">
-                                        {item.order_id}
-                                    </td>
-                                    <td className="p-3">
-                                        {item.product_name ?? item.product}
-                                    </td>
-                                    <td className="p-3">{item.nama_witel}</td>
-                                    <td className="p-3">
-                                        {item.customer_name}
-                                    </td>
-                                    <td className="p-3">
-                                        {formatDate(item.updated_at)}
-                                    </td>
-                                    <td className="p-3 text-center">
-                                        <div className="flex justify-center items-center gap-2">
-                                            <button
-                                                onClick={() =>
-                                                    handleSetInProgress(
-                                                        item.order_id,
-                                                    )
-                                                }
-                                                className="px-3 py-1 text-xs font-bold text-white bg-blue-500 rounded-md hover:bg-blue-600"
-                                            >
-                                                Ke In Progress
-                                            </button>
-
-                                            {/* [TAMBAHKAN] Tombol baru "Kirim ke QC" */}
-                                            <button
-                                                onClick={() =>
-                                                    handleSetQc(item.order_id)
-                                                }
-                                                className="px-3 py-1 text-xs font-bold text-white bg-yellow-500 rounded-md hover:bg-yellow-600"
-                                            >
-                                                Kirim ke QC
-                                            </button>
-
-                                            <button
-                                                onClick={() =>
-                                                    handleSetCancel(
-                                                        item.order_id,
-                                                    )
-                                                }
-                                                className="px-3 py-1 text-xs font-bold text-white bg-red-500 rounded-md hover:bg-red-600"
-                                            >
-                                                Ke Cancel
-                                            </button>
-                                        </div>
-                                    </td>
-                                </tr>
-                            ))
-                        ) : (
-                            <tr>
-                                <td
-                                    colSpan="8"
-                                    className="p-4 text-center text-gray-500"
-                                >
-                                    Tidak ada data Complete saat ini.
-                                </td>
-                            </tr>
-                        )}
-                    </tbody>
-                </table>
-            </div>
-            <Pagination links={dataPaginator.links} />
-        </>
-    );
-};
-
-// GANTI SELURUH KOMPONEN QcTable ANDA DENGAN INI
-const QcTable = ({ dataPaginator = { data: [], links: [], from: 0 } }) => {
-    // ... (fungsi-fungsi handler Anda biarkan sama)
-    const handleSetInProgress = async (orderId) => {
-        const result = await MySwal.fire({
-            title: 'Kembalikan ke In Progress?',
-            text: `Anda yakin ingin mengembalikan Order ID ${orderId} ke status "In Progress"?`,
-            icon: 'question',
-            showCancelButton: true,
-            confirmButtonColor: '#007bff',
-            cancelButtonColor: '#6c757d',
-            confirmButtonText: 'Ya, Kembalikan!',
-            cancelButtonText: 'Batal'
-        });
-
-        if (result.isConfirmed) {
-            router.put(
-                route("admin.complete.update.progress", { documentData: orderId }),
-                {},
-                {
-                    preserveScroll: true,
-                    onSuccess: () => {
-                        toast.info(`Order ${orderId} dikembalikan ke In Progress.`);
-                        router.reload({ preserveState: false });
-                    },
-                    onError: () => toast.error('Gagal mengubah status.')
-                },
-            );
-        }
-    };
-    const handleSetDone = async (orderId) => {
-        const result = await MySwal.fire({
-            title: 'Selesaikan Order?',
-            text: `Anda yakin ingin mengubah status Order ID ${orderId} menjadi "Done Close Bima"?`,
-            icon: 'success',
-            showCancelButton: true,
-            confirmButtonColor: '#007bff',
-            cancelButtonColor: '#6c757d',
-            confirmButtonText: 'Ya, Kembalikan!',
-            cancelButtonText: 'Batal'
-        });
-        if (result.isConfirmed) {
-            router.put(
-                route("admin.qc.update.done", { order_id: orderId }),
-                {},
-                {
-                    preserveScroll: true,
-                    onSuccess: () => {
-                        toast.success(`Order ${orderId} berhasil diselesaikan.`);
-                        router.reload({ preserveState: false });
-                    },
-                    onError: () => toast.error('Gagal menyelesaikan order.')
-                },
-            );
-        }
-    }
-    const handleSetCancel = async (orderId) => {
-        const result = await MySwal.fire({
-            title: 'Batalkan Order?',
-            text: `Anda yakin ingin mengubah status Order ID ${orderId} menjadi "Done Close Cancel"?`,
-            icon: 'warning',
-            showCancelButton: true,
-            confirmButtonColor: '#007bff',
-            cancelButtonColor: '#6c757d',
-            confirmButtonText: 'Ya, Kembalikan!',
-            cancelButtonText: 'Batal'
-        });
-        if (result.isConfirmed) {
-            router.put(
-                route("admin.qc.update.cancel", { order_id: orderId }),
-                {},
-                {
-                    preserveScroll: true,
-                    onSuccess: () => {
-                        toast.success(`Order ${orderId} berhasil di-cancel.`);
-                        router.reload({ preserveState: false });
-                    },
-                    onError: () => toast.error('Gagal membatalkan order.')
-                },
-            );
-        }
-    };
-
-    return (
-        <>
-            <div className="overflow-x-auto text-sm">
-                <p className="text-gray-500 mb-2">
-                    Menampilkan data order yang sedang dalam proses Quality
-                    Control (QC).
-                </p>
-                <table className="w-full">
-                    <thead className="bg-gray-50">
-                        {/* ... (kode thead Anda) ... */}
-                    </thead>
-                    <tbody className="divide-y bg-white">
-                        {dataPaginator.data.length > 0 ? (
-                            dataPaginator.data.map((item, index) => (
-                                <tr
-                                    key={item.id ?? item.order_id} // <-- PERBAIKAN DI SINI
-                                    className="text-gray-700 hover:bg-gray-50"
-                                >
-                                    <td className="p-3">
-                                        {dataPaginator.from + index}
-                                    </td>
-                                    <td className="p-3">{item.milestone}</td>
-                                    <td className="p-3 font-mono">
-                                        {item.order_id}
-                                    </td>
-                                    <td className="p-3">{item.product}</td>
-                                    <td className="p-3">{item.nama_witel}</td>
-                                    <td className="p-3">
-                                        {item.customer_name}
-                                    </td>
-                                    <td className="p-3">
-                                        {formatDate(item.updated_at)}
-                                    </td>
-                                    <td className="p-3 text-center">
-                                        <div className="flex justify-center items-center gap-2">
-                                            <button
-                                                onClick={() =>
-                                                    handleSetInProgress(
-                                                        item.order_id,
-                                                    )
-                                                }
-                                                className="px-3 py-1 text-xs font-bold text-white bg-blue-500 rounded-md hover:bg-blue-600"
-                                            >
-                                                In Progress
-                                            </button>
-                                            <button
-                                                onClick={() =>
-                                                    handleSetDone(item.order_id)
-                                                }
-                                                className="px-3 py-1 text-xs font-bold text-white bg-green-500 rounded-md hover:bg-green-600"
-                                            >
-                                                Done Bima
-                                            </button>
-                                            <button
-                                                onClick={() =>
-                                                    handleSetCancel(
-                                                        item.order_id,
-                                                    )
-                                                }
-                                                className="px-3 py-1 text-xs font-bold text-white bg-red-500 rounded-md hover:bg-red-600"
-                                            >
-                                                Cancel
-                                            </button>
-                                        </div>
-                                    </td>
-                                </tr>
-                            ))
-                        ) : (
-                            <tr><td colSpan="8" className="p-4 text-center text-gray-500">Tidak ada data QC saat ini.</td></tr>
-                        )}
-                    </tbody>
-                </table>
-            </div>
-            <Pagination links={dataPaginator.links} />
-        </>
-    );
-};
-
-// GANTI SELURUH KOMPONEN HistoryTable ANDA DENGAN INI
-const HistoryTable = ({ historyData = { data: [], links: [] } }) => {
-    // <-- Menerima objek historyData
-    const formatDateFull = (dateString) => {
-        if (!dateString) return "-";
-        return new Date(dateString).toLocaleString("id-ID", {
-            year: "numeric",
-            month: "2-digit",
-            day: "2-digit",
-            hour: "2-digit",
-            minute: "2-digit",
-            second: "2-digit",
-        });
-    };
-    const StatusChip = ({ text }) => {
-        const lowerText = text.toLowerCase();
-        let colorClasses = "bg-gray-100 text-gray-800";
-        if (lowerText.includes("progress")) {
-            colorClasses = "bg-blue-100 text-blue-800";
-        } else if (lowerText.includes("bima")) {
-            colorClasses = "bg-green-100 text-green-800";
-        } else if (lowerText.includes("cancel")) {
-            colorClasses = "bg-red-100 text-red-800";
-        }
-        return (
-            <span
-                className={`px-2 py-1 text-xs font-semibold leading-tight rounded-full ${colorClasses}`}
-            >
-                {text}
-            </span>
-        );
-    };
-    return (
-        <div className="overflow-x-auto text-sm">
-            {historyData.data.length > 0 && (
-                <p className="text-gray-500 mb-2">
-                    Menampilkan data histori update.
-                </p>
-            )}
-            <table className="w-full whitespace-nowrap">
-                <thead className="bg-gray-50">
-                    <tr className="text-left font-semibold text-gray-600">
-                        <th className="p-3">Waktu Update</th>
-                        <th className="p-3">Order ID</th>
-                        <th className="p-3">Customer</th>
-                        <th className="p-3">Witel</th>
-                        <th className="p-3">Status Lama</th>
-                        <th className="p-3">Status Baru</th>
-                        <th className="p-3">Sumber</th>
-                    </tr>
-                </thead>
-                <tbody className="divide-y bg-white">
-                    {/* Mengakses array .data dari historyData */}
-                    {historyData.data.length > 0 ? (
-                        historyData.data.map((item) => (
-                            <tr
-                                key={item.id}
-                                className="text-gray-700 hover:bg-gray-50"
-                            >
-                                <td className="p-3 font-semibold">
-                                    {formatDateFull(item.created_at)}
-                                </td>
-                                <td className="p-3 font-mono">
-                                    {item.order_id}
-                                </td>
-                                <td className="p-3">{item.customer_name}</td>
-                                <td className="p-3">{item.nama_witel}</td>
-                                <td className="p-3">
-                                    <StatusChip text={item.status_lama} />
-                                </td>
-                                <td className="p-3">
-                                    <StatusChip text={item.status_baru} />
-                                </td>
-                                <td className="p-3 font-medium text-gray-600">
-                                    {item.sumber_update}
-                                </td>
-                            </tr>
-                        ))
-                    ) : (
-                        <tr>
-                            <td
-                                colSpan="7"
-                                className="p-4 text-center text-gray-500"
-                            >
-                                Belum ada histori update yang tercatat.
-                            </td>
-                        </tr>
-                    )}
-                </tbody>
-            </table>
-            <Pagination links={historyData.links} />
-        </div>
-    );
-};
-
-const KpiTable = ({ data = [], accountOfficers = [], openModal }) => {
-    return (
-        <div className="overflow-x-auto text-sm">
-            <table className="min-w-full divide-y divide-gray-200 border">
-                <thead className="bg-gray-50">
-                    <tr>
-                        <th
-                            rowSpan="2"
-                            className="px-4 py-2 text-center text-xs font-medium text-white uppercase tracking-wider border bg-green-600"
-                        >
-                            NAMA PO
-                        </th>
-                        <th
-                            rowSpan="2"
-                            className="px-4 py-2 text-center text-xs font-medium text-white uppercase tracking-wider border bg-green-600"
-                        >
-                            WITEL
-                        </th>
-                        <th
-                            colSpan="2"
-                            className="px-4 py-2 text-center text-xs font-medium text-white uppercase tracking-wider border bg-orange-500"
-                        >
-                            PRODIGI DONE
-                        </th>
-                        <th
-                            colSpan="2"
-                            className="px-4 py-2 text-center text-xs font-medium text-white uppercase tracking-wider border bg-blue-500"
-                        >
-                            PRODIGI OGP
-                        </th>
-                        <th
-                            rowSpan="2"
-                            className="px-4 py-2 text-center text-xs font-medium text-white uppercase tracking-wider border bg-green-600"
-                        >
-                            TOTAL
-                        </th>
-                        <th
-                            colSpan="2"
-                            className="px-4 py-2 text-center text-xs font-medium text-white uppercase tracking-wider border bg-yellow-400"
-                        >
-                            ACH
-                        </th>
-                        <th
-                            rowSpan="2"
-                            className="px-4 py-2 text-center text-xs font-medium text-white uppercase tracking-wider border bg-gray-600"
-                        >
-                            AKSI
-                        </th>
-                    </tr>
-                    <tr>
-                        <th className="px-4 py-2 text-center text-xs font-medium text-white uppercase tracking-wider border bg-orange-400">
-                            NCX
-                        </th>
-                        <th className="px-4 py-2 text-center text-xs font-medium text-white uppercase tracking-wider border bg-orange-400">
-                            SCONE
-                        </th>
-                        <th className="px-4 py-2 text-center text-xs font-medium text-white uppercase tracking-wider border bg-blue-400">
-                            NCX
-                        </th>
-                        <th className="px-4 py-2 text-center text-xs font-medium text-white uppercase tracking-wider border bg-blue-400">
-                            SCONE
-                        </th>
-                        <th className="px-4 py-2 text-center text-xs font-medium text-white uppercase tracking-wider border bg-yellow-300">
-                            YTD
-                        </th>
-                        <th className="px-4 py-2 text-center text-xs font-medium text-white uppercase tracking-wider border bg-yellow-300">
-                            Q3
-                        </th>
-                    </tr>
-                </thead>
-                <tbody className="bg-white divide-y divide-gray-200">
-                    {/* [FIX] Tambahkan .filter(Boolean) untuk membuang data null sebelum mapping */}
-                    {data.filter(Boolean).map((po) => (
-                        <tr key={po.nama_po} className="hover:bg-gray-50">
-                            <td className="px-4 py-2 whitespace-nowrap border font-medium">
-                                {po.nama_po}
-                            </td>
-                            <td className="px-4 py-2 whitespace-nowrap border">
-                                {po.witel}
-                            </td>
-                            <td className="px-4 py-2 whitespace-nowrap border text-center">
-                                {po.done_ncx}
-                            </td>
-                            <td className="px-4 py-2 whitespace-nowrap border text-center">
-                                {po.done_scone}
-                            </td>
-                            <td className="px-4 py-2 whitespace-nowrap border text-center">
-                                {po.ogp_ncx}
-                            </td>
-                            <td className="px-4 py-2 whitespace-nowrap border text-center">
-                                {po.ogp_scone}
-                            </td>
-                            <td className="px-4 py-2 whitespace-nowrap border text-center font-bold">
-                                {po.total}
-                            </td>
-                            <td className="px-4 py-2 whitespace-nowrap border text-center font-bold bg-yellow-200">
-                                {po.ach_ytd}
-                            </td>
-                            <td className="px-4 py-2 whitespace-nowrap border text-center font-bold bg-yellow-200">
-                                {po.ach_q3}
-                            </td>
-                            <td className="px-4 py-2 whitespace-nowrap border">
-                                <button
-                                    onClick={() =>
-                                        openModal(
-                                            accountOfficers.find(
-                                                (a) => a.id === po.id,
-                                            ),
-                                        )
-                                    }
-                                    className="text-indigo-600 hover:text-indigo-900 text-xs font-semibold"
-                                >
-                                    Edit
-                                </button>
-                            </td>
-                        </tr>
-                    ))}
-                </tbody>
-            </table>
-        </div>
-    );
-};
-
-// ===================================================================
-// Table Configurator Component
-// ===================================================================
-
-const TableConfigurator = ({
-    tableConfig,
-    setTableConfig,
-    currentSegment,
-    onSave,
-}) => {
-    const [isExpanded, setIsExpanded] = useState(false);
-    const [formState, setFormState] = useState({
-        mode: "sub-column",
-        groupTitle: tableConfig[0]?.groupTitle || "",
-        columnTitle: "",
-        columnType: "calculation",
-        operation: "sum",
-        operands: [],
-        initialSubColumnTitle: "Value",
-    });
-    const [editGroup, setEditGroup] = useState({
-        title: tableConfig[0]?.groupTitle || "",
-        className: tableConfig[0]?.groupClass || "",
-    });
-    const [columnToDelete, setColumnToDelete] = useState("");
-
-    const [columnToEdit, setColumnToEdit] = useState("");
-    const [editFormState, setEditFormState] = useState(null);
-
-    const availableColumns = useMemo(() => {
-        const columns = [];
-        tableConfig.forEach((group) => {
-            group.columns.forEach((col) => {
-                const processColumn = (c, parentKey = "", parentTitle = "") => {
-                    if (c.subColumns) {
-                        c.subColumns.forEach((sc) =>
-                            processColumn(sc, col.key, col.title),
-                        );
-                    } else if (c.type !== "calculation") {
-                        const key = parentKey ? parentKey + c.key : c.key;
-                        const label = parentTitle
-                            ? `${group.groupTitle} > ${parentTitle} > ${c.title}`
-                            : `${group.groupTitle} > ${c.title}`;
-                        columns.push({ label, value: key });
-                    }
-                };
-                processColumn(col);
-            });
-        });
-        return columns.sort((a, b) => a.label.localeCompare(b.label));
-    }, [tableConfig]);
-
-    const allColumnsList = useMemo(() => {
-        const columns = [];
-        tableConfig.forEach((group) => {
-            group.columns.forEach((col) => {
-                if (col.subColumns && col.subColumns.length > 0) {
-                    col.subColumns.forEach((sc) => {
-                        columns.push({
-                            label: `${group.groupTitle} > ${col.title} > ${sc.title}`,
-                            value: `${group.groupTitle}.${col.key}.${sc.key}`,
-                        });
-                    });
-                } else {
-                    columns.push({
-                        label: `${group.groupTitle} > ${col.title}`,
-                        value: `${group.groupTitle}.${col.key}`,
-                    });
-                }
-            });
-        });
-        return columns;
-    }, [tableConfig]);
-
-    useEffect(() => {
-        const currentGroupExists = tableConfig.some(
-            (g) => g.groupTitle === editGroup.title,
-        );
-        if (!currentGroupExists && tableConfig.length > 0) {
-            setEditGroup({
-                title: tableConfig[0].groupTitle,
-                className: tableConfig[0].groupClass || "",
-            });
-        }
-        const currentFormGroupExists = tableConfig.some(
-            (g) => g.groupTitle === formState.groupTitle,
-        );
-        if (!currentFormGroupExists && tableConfig.length > 0) {
-            setFormState((prev) => ({
-                ...prev,
-                groupTitle: tableConfig[0].groupTitle,
-            }));
-        }
-        if (allColumnsList.length > 0) {
-            const selectionExists = allColumnsList.some(
-                (c) => c.value === columnToDelete,
-            );
-            if (!selectionExists) {
-                setColumnToDelete(allColumnsList[0].value);
-            }
-        } else {
-            setColumnToDelete("");
-        }
-    }, [
-        tableConfig,
-        allColumnsList,
-        columnToDelete,
-        editGroup.title,
-        formState.groupTitle,
-    ]);
-
-    const handleResetConfig = async () => {
-        const result = await MySwal.fire({
-            title: 'Anda Yakin?',
-            text: "Tampilan tabel akan kembali ke pengaturan default. Aksi ini tidak dapat dibatalkan.",
-            icon: 'warning',
-            showCancelButton: true,
-            confirmButtonColor: '#d33',
-            cancelButtonColor: '#3085d6',
-            confirmButtonText: 'Ya, reset tampilan!',
-            cancelButtonText: 'Batal'
-        });
-
-        if (result.isConfirmed) {
-            // [GANTI LOGIKA INI]
-            // Hapus: localStorage.removeItem(`userTableConfig_${currentSegment}`);
-            // Hapus: window.location.reload();
-
-            // [TAMBAHKAN LOGIKA BARU INI]
-            // Kirim permintaan POST ke rute reset yang baru kita buat
-            router.post(route("admin.analysisDigitalProduct.resetConfig"), {
-                page_name: `analysis_digital_${currentSegment.toLowerCase()}`
-            }, {
-                preserveScroll: true,
-                // onSuccess callback tidak lagi diperlukan di sini, karena pesan sukses
-                // akan ditangani oleh 'flash' message dari backend.
-            });
-        }
-    };
-
-    const handleDeleteColumn = async () => {
-        if (!columnToDelete) {
-            toast.error("Silakan pilih kolom yang akan dihapus."); // <-- Ganti alert
-            return;
-        }
-        const selectedColumnLabel = allColumnsList.find(
-            (c) => c.value === columnToDelete,
-        )?.label;
-
-        const result = await MySwal.fire({ // <-- Ganti confirm
-            title: 'Anda Yakin?',
-            text: `Anda akan menghapus kolom "${selectedColumnLabel}". Aksi ini tidak dapat dibatalkan.`,
-            icon: 'warning',
-            showCancelButton: true,
-            confirmButtonColor: '#d33',
-            cancelButtonColor: '#3085d6',
-            confirmButtonText: 'Ya, hapus kolom!',
-            cancelButtonText: 'Batal'
-        });
-
-        if (result.isConfirmed) {
-            const [groupTitle, colKey, subColKey] = columnToDelete.split(".");
-            const newConfig = JSON.parse(JSON.stringify(tableConfig));
-            const targetGroup = newConfig.find(
-                (g) => g.groupTitle === groupTitle,
-            );
-            if (targetGroup) {
-                if (subColKey) {
-                    const targetCol = targetGroup.columns.find(
-                        (c) => c.key === colKey,
-                    );
-                    if (targetCol && targetCol.subColumns) {
-                        targetCol.subColumns = targetCol.subColumns.filter(
-                            (sc) => sc.key !== subColKey,
-                        );
-                        if (targetCol.subColumns.length === 0) {
-                            targetGroup.columns = targetGroup.columns.filter(
-                                (c) => c.key !== colKey,
-                            );
-                        }
-                    }
-                } else {
-                    targetGroup.columns = targetGroup.columns.filter(
-                        (c) => c.key !== colKey,
-                    );
-                }
-
-                if (targetGroup.columns.length === 0) {
-                    const finalConfig = newConfig.filter(
-                        (g) => g.groupTitle !== groupTitle,
-                    );
-                    setTableConfig(finalConfig);
-                } else {
-                    setTableConfig(newConfig);
-                }
-                toast.success("Kolom berhasil dihapus.");
-            }
-        }
-    };
-
-    const handleInputChange = (e) => {
-        const { name, value, type } = e.target;
-        if (type === "radio" && name === "mode") {
-            setFormState((prev) => ({
-                ...prev,
-                mode: value,
-                columnTitle: "",
-                operands: [],
-                columnType: "calculation",
-            }));
-        } else {
-            setFormState((prev) => ({ ...prev, [name]: value }));
-        }
-    };
-
-    const handleOperandChange = (index, value) => {
-        setFormState((prev) => {
-            const newOperands = [...(prev.operands || [])];
-            newOperands[index] = value;
-            return { ...prev, operands: newOperands };
-        });
-    };
-
-    const handleCheckboxOperandChange = (checked, value) => {
-        setFormState((prev) => {
-            const currentOperands = prev.operands || [];
-            if (checked) {
-                return { ...prev, operands: [...currentOperands, value] };
-            } else {
-                return {
-                    ...prev,
-                    operands: currentOperands.filter((op) => op !== value),
-                };
-            }
-        });
-    };
-
-    const handleSubmit = (e) => {
-        e.preventDefault();
-        if (formState.mode === "group-column") {
-            const newGroupObject = {
-                groupTitle: formState.columnTitle,
-                groupClass: "bg-gray-600",
-                columnClass: "bg-gray-500", // Warna turunan default
-                subColumnClass: "bg-gray-400", // Warna turunan default
-                columns: [
-                    {
-                        key: `_${formState.initialSubColumnTitle.toLowerCase().replace(/\s+/g, "_")}`,
-                        title: formState.initialSubColumnTitle,
-                        type: "data",
-                    },
-                ],
-            };
-            setTableConfig((prev) => [...prev, newGroupObject]);
-            toast.success(
-                `Grup kolom "${formState.columnTitle}" berhasil ditambahkan.`,
-            );
-        } else {
-            const newColumnKey = `_${formState.columnTitle.toLowerCase().replace(/\s+/g, "_")}`;
-            const newConfig = JSON.parse(JSON.stringify(tableConfig));
-            const targetGroup = newConfig.find(
-                (g) => g.groupTitle === formState.groupTitle,
-            );
-            if (targetGroup) {
-                let newColumnDef = {
-                    key: newColumnKey,
-                    title: formState.columnTitle,
-                    type: formState.columnType,
-                };
-                if (formState.columnType === "calculation") {
-                    if (
-                        formState.operation === "percentage" &&
-                        (formState.operands.length < 2 ||
-                            !formState.operands[0] ||
-                            !formState.operands[1])
-                    ) {
-                        toast.error(
-                            "Untuk Persentase, harap pilih kolom Pembilang dan Penyebut.",
-                        );
-                        return;
-                    }
-                    if (
-                        ["sum", "average", "count"].includes(
-                            formState.operation,
-                        ) &&
-                        formState.operands.length === 0
-                    ) {
-                        toast.error(
-                            `Untuk operasi ${formState.operation.toUpperCase()}, harap pilih minimal satu kolom.`,
-                        );
-                        return;
-                    }
-                    newColumnDef.calculation = {
-                        operation: formState.operation,
-                        operands: formState.operands,
-                    };
-                }
-                targetGroup.columns.push(newColumnDef);
-                setTableConfig(newConfig);
-                toast.success(
-                    `Sub-kolom "${formState.columnTitle}" berhasil ditambahkan ke grup "${formState.groupTitle}".`,
-                );
-            }
-        }
-    };
-
-    const handleSelectGroupToEdit = (e) => {
-        const selectedTitle = e.target.value;
-        const groupToEdit = tableConfig.find(
-            (g) => g.groupTitle === selectedTitle,
-        );
-        if (groupToEdit) {
-            setEditGroup({
-                title: groupToEdit.groupTitle,
-                className: groupToEdit.groupClass || "",
-            });
-        }
-    };
-
-    /**
-     * Menyesuaikan tingkat kecerahan dari kelas warna Tailwind.
-     * @param {string} className - Kelas CSS input, e.g., 'bg-blue-600'.
-     * @param {number} amount - Jumlah yang akan ditambah/dikurangi, e.g., -100.
-     * @returns {string} Kelas CSS baru atau kelas asli jika tidak valid.
-     */
-    const adjustTailwindColor = (className, amount) => {
-        if (typeof className !== "string") return className;
-
-        const match = className.match(/(bg|text|border)-(\w+)-(\d{2,3})/);
-        if (match) {
-            const [, prefix, color, brightnessStr] = match;
-            const brightness = parseInt(brightnessStr, 10);
-            let newBrightness = brightness + amount;
-
-            // Pastikan nilai tetap dalam rentang valid Tailwind (50-950)
-            newBrightness = Math.max(50, Math.min(950, newBrightness));
-
-            return `${prefix}-${color}-${newBrightness}`;
-        }
-        return className; // Kembalikan kelas asli jika format tidak cocok
-    };
-
-    const handleSaveColor = () => {
-        const baseClass = editGroup.className;
-        const columnClass = adjustTailwindColor(baseClass, -100);
-        const subColumnClass = adjustTailwindColor(baseClass, -200);
-
-        const newConfig = tableConfig.map((group) => {
-            if (group.groupTitle === editGroup.title) {
-                return {
-                    ...group,
-                    groupClass: baseClass,
-                    columnClass: columnClass,
-                    subColumnClass: subColumnClass,
-                };
-            }
-            return group;
-        });
-
-        setTableConfig(newConfig);
-        toast.success(
-            `Warna untuk grup "${editGroup.title}" dan turunannya berhasil diubah.`,
-        );
-    };
-
-    const handleSelectColumnToEdit = (e) => {
-        const identifier = e.target.value;
-        setColumnToEdit(identifier);
-
-        if (!identifier) {
-            setEditFormState(null);
-            return;
-        }
-
-        const [groupTitle, colKey, subColKey] = identifier.split(".");
-        const group = tableConfig.find((g) => g.groupTitle === groupTitle);
-        if (!group) return;
-
-        const parentCol = group.columns.find((c) => c.key === colKey);
-        if (!parentCol) return;
-
-        const targetColumn = subColKey
-            ? parentCol.subColumns.find((sc) => sc.key === subColKey)
-            : parentCol;
-        if (!targetColumn) return;
-
-        setEditFormState({
-            title: targetColumn.title,
-            type: targetColumn.type,
-            operation: targetColumn.calculation?.operation || "sum",
-            operands: targetColumn.calculation?.operands || [],
-        });
-    };
-
-    // [NEW] Function to handle saving changes to a column
-    const handleSaveChanges = (e) => {
-        e.preventDefault();
-        if (!columnToEdit || !editFormState) {
-            // [FIX 1] Ganti alert dengan toast.error
-            toast.error("Tidak ada kolom yang dipilih atau form tidak valid.");
-            return;
-        }
-
-        const newConfig = JSON.parse(JSON.stringify(tableConfig));
-        const [groupTitle, colKey, subColKey] = columnToEdit.split(".");
-
-        const group = newConfig.find((g) => g.groupTitle === groupTitle);
-        const parentCol = group?.columns.find((c) => c.key === colKey);
-        const targetColumn = subColKey
-            ? parentCol?.subColumns.find((sc) => sc.key === subColKey)
-            : parentCol;
-
-        if (targetColumn) {
-            targetColumn.title = editFormState.title;
-            if (targetColumn.type === "calculation") {
-                targetColumn.calculation = {
-                    operation: editFormState.operation,
-                    operands: editFormState.operands,
-                };
-            }
-            setTableConfig(newConfig);
-
-            // [FIX 2] Ganti alert dengan toast.success
-            toast.success(`Kolom "${targetColumn.title}" berhasil diupdate.`);
-
-            setColumnToEdit("");
-            setEditFormState(null);
-        } else {
-            // [FIX 3] Ganti alert dengan toast.error
-            toast.error("Gagal menemukan kolom untuk diupdate.");
-        }
-    };
-
-    const renderOperandInputs = (form, setForm, availableCols) => {
-        const handleOpChange = (index, value) => {
-            setForm((prev) => {
-                const newOperands = [...(prev.operands || [])];
-                newOperands[index] = value;
-                return { ...prev, operands: newOperands };
-            });
-        };
-
-        const handleCheckboxOpChange = (checked, value) => {
-            setForm((prev) => {
-                const currentOperands = prev.operands || [];
-                if (checked) {
-                    return { ...prev, operands: [...currentOperands, value] };
-                } else {
-                    return {
-                        ...prev,
-                        operands: currentOperands.filter((op) => op !== value),
-                    };
-                }
-            });
-        };
-
-        switch (form.operation) {
-            case "sum":
-            case "average":
-            case "count":
-                return (
-                    <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">
-                            Pilih Kolom untuk Dihitung
-                        </label>
-                        <div className="w-full border border-gray-300 rounded-md shadow-sm h-32 overflow-y-auto p-2 mt-1 space-y-1">
-                            {availableCols.map((col) => (
-                                <label
-                                    key={col.value}
-                                    className="flex items-center w-full p-1 rounded hover:bg-gray-100"
-                                >
-                                    <input
-                                        type="checkbox"
-                                        checked={(form.operands || []).includes(
-                                            col.value,
-                                        )}
-                                        onChange={(e) =>
-                                            handleCheckboxOpChange(
-                                                e.target.checked,
-                                                col.value,
-                                            )
-                                        }
-                                        className="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
-                                    />
-                                    <span className="ml-2 text-sm text-gray-700">
-                                        {col.label}
-                                    </span>
-                                </label>
-                            ))}
-                        </div>
-                    </div>
-                );
-            case "percentage":
-                return (
-                    <div className="space-y-2">
-                        <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-1">
-                                Kolom Pembilang (Numerator)
-                            </label>
-                            <select
-                                value={form.operands[0] || ""}
-                                onChange={(e) =>
-                                    handleOpChange(0, e.target.value)
-                                }
-                                className="w-full border-gray-300 rounded-md shadow-sm"
-                            >
-                                <option value="">Pilih Kolom</option>
-                                {availableCols.map((col) => (
-                                    <option key={col.value} value={col.value}>
-                                        {col.label}
-                                    </option>
-                                ))}
-                            </select>
-                        </div>
-                        <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-1">
-                                Kolom Penyebut (Denominator)
-                            </label>
-                            <select
-                                value={form.operands[1] || ""}
-                                onChange={(e) =>
-                                    handleOpChange(1, e.target.value)
-                                }
-                                className="w-full border-gray-300 rounded-md shadow-sm"
-                            >
-                                <option value="">Pilih Kolom</option>
-                                {availableCols.map((col) => (
-                                    <option key={col.value} value={col.value}>
-                                        {col.label}
-                                    </option>
-                                ))}
-                            </select>
-                        </div>
-                    </div>
-                );
-            default:
-                return null;
-        }
-    };
-
-    return (
-        <div className="bg-white rounded-lg shadow-md mb-6">
-            <div
-                className="flex justify-between items-center p-4 cursor-pointer hover:bg-gray-50"
-                onClick={() => setIsExpanded(!isExpanded)}
-            >
-                <h3 className="font-semibold text-gray-700">
-                    Konfigurasi Tampilan Tabel
-                </h3>
-                <button
-                    type="button"
-                    className="text-sm font-bold text-blue-600 hover:underline"
-                >
-                    {isExpanded ? "Tutup" : "Buka"}
-                </button>
-            </div>
-            {isExpanded && (
-                <div className="p-6 border-t">
-                    <div className="flex flex-col md:flex-row md:gap-8">
-                        {/* Kolom Kiri */}
-                        <div className="flex-grow md:w-2/3">
-                            <form onSubmit={handleSubmit} className="space-y-6">
-                                <div>
-                                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                                        Pilih Aksi:
-                                    </label>
-                                    <div className="flex gap-4">
-                                        <label className="flex items-center">
-                                            <input
-                                                type="radio"
-                                                name="mode"
-                                                value="sub-column"
-                                                checked={
-                                                    formState.mode ===
-                                                    "sub-column"
-                                                }
-                                                onChange={handleInputChange}
-                                                className="mr-2 h-4 w-4 text-indigo-600 border-gray-300 focus:ring-indigo-500"
-                                            />{" "}
-                                            Tambah Sub-Kolom
-                                        </label>
-                                        <label className="flex items-center">
-                                            <input
-                                                type="radio"
-                                                name="mode"
-                                                value="group-column"
-                                                checked={
-                                                    formState.mode ===
-                                                    "group-column"
-                                                }
-                                                onChange={handleInputChange}
-                                                className="mr-2 h-4 w-4 text-indigo-600 border-gray-300 focus:ring-indigo-500"
-                                            />{" "}
-                                            Tambah Grup Utama
-                                        </label>
-                                    </div>
-                                </div>
-                                {formState.mode === "group-column" && (
-                                    <div className="p-4 border rounded-md space-y-4 bg-gray-50">
-                                        <h4 className="font-semibold text-md text-gray-800">
-                                            Detail Grup Utama Baru
-                                        </h4>
-                                        <div>
-                                            <label className="block text-sm font-medium text-gray-700">
-                                                Nama Grup Utama Baru
-                                            </label>
-                                            <input
-                                                type="text"
-                                                name="columnTitle"
-                                                value={formState.columnTitle}
-                                                onChange={handleInputChange}
-                                                className="mt-1 block w-full border-gray-300 rounded-md shadow-sm"
-                                                required
-                                            />
-                                        </div>
-                                        <div>
-                                            <label className="block text-sm font-medium text-gray-700">
-                                                Nama Sub-Kolom Awal
-                                            </label>
-                                            <input
-                                                type="text"
-                                                name="initialSubColumnTitle"
-                                                value={
-                                                    formState.initialSubColumnTitle
-                                                }
-                                                onChange={handleInputChange}
-                                                className="mt-1 block w-full border-gray-300 rounded-md shadow-sm"
-                                                required
-                                            />
-                                        </div>
-                                    </div>
-                                )}
-                                {formState.mode === "sub-column" && (
-                                    <div className="p-4 border rounded-md space-y-4 bg-gray-50">
-                                        <h4 className="font-semibold text-md text-gray-800">
-                                            Detail Sub-Kolom Baru
-                                        </h4>
-                                        <div>
-                                            <label className="block text-sm font-medium text-gray-700">
-                                                Tambahkan ke Grup Induk
-                                            </label>
-                                            <select
-                                                name="groupTitle"
-                                                value={formState.groupTitle}
-                                                onChange={handleInputChange}
-                                                className="mt-1 block w-full border-gray-300 rounded-md shadow-sm"
-                                            >
-                                                {tableConfig.map((g) => (
-                                                    <option
-                                                        key={g.groupTitle}
-                                                        value={g.groupTitle}
-                                                    >
-                                                        {g.groupTitle}
-                                                    </option>
-                                                ))}
-                                            </select>
-                                        </div>
-                                        <div>
-                                            <label className="block text-sm font-medium text-gray-700">
-                                                Nama Sub-Kolom Baru
-                                            </label>
-                                            <input
-                                                type="text"
-                                                name="columnTitle"
-                                                value={formState.columnTitle}
-                                                onChange={handleInputChange}
-                                                className="mt-1 block w-full border-gray-300 rounded-md shadow-sm"
-                                                required
-                                            />
-                                        </div>
-                                        <div>
-                                            <label className="block text-sm font-medium text-gray-700 mb-2">
-                                                Tipe Kolom:
-                                            </label>
-                                            <div className="flex gap-4">
-                                                <label className="flex items-center">
-                                                    <input
-                                                        type="radio"
-                                                        name="columnType"
-                                                        value="target"
-                                                        checked={
-                                                            formState.columnType ===
-                                                            "target"
-                                                        }
-                                                        onChange={
-                                                            handleInputChange
-                                                        }
-                                                        className="mr-2"
-                                                    />{" "}
-                                                    Target Manual
-                                                </label>
-                                                <label className="flex items-center">
-                                                    <input
-                                                        type="radio"
-                                                        name="columnType"
-                                                        value="calculation"
-                                                        checked={
-                                                            formState.columnType ===
-                                                            "calculation"
-                                                        }
-                                                        onChange={
-                                                            handleInputChange
-                                                        }
-                                                        className="mr-2"
-                                                    />{" "}
-                                                    Kalkulasi
-                                                </label>
-                                            </div>
-                                        </div>
-                                        {formState.columnType ===
-                                            "calculation" && (
-                                                <div className="pt-4 border-t space-y-4">
-                                                    <div>
-                                                        <label className="block text-sm font-medium text-gray-700">
-                                                            Operasi Kalkulasi
-                                                        </label>
-                                                        <select
-                                                            name="operation"
-                                                            value={
-                                                                formState.operation
-                                                            }
-                                                            onChange={
-                                                                handleInputChange
-                                                            }
-                                                            className="mt-1 block w-full border-gray-300 rounded-md shadow-sm"
-                                                        >
-                                                            <option value="sum">
-                                                                SUM (Jumlahkan)
-                                                            </option>
-                                                            <option value="percentage">
-                                                                PERCENTAGE
-                                                                (Persentase)
-                                                            </option>
-                                                            <option value="average">
-                                                                AVERAGE (Rata-rata)
-                                                            </option>
-                                                            <option value="count">
-                                                                COUNT (Hitung
-                                                                Jumlah)
-                                                            </option>
-                                                        </select>
-                                                    </div>
-                                                    {renderOperandInputs(
-                                                        formState,
-                                                        setFormState,
-                                                        availableColumns,
-                                                    )}
-                                                </div>
-                                            )}
-                                    </div>
-                                )}
-                                <div className="text-right pt-4">
-                                    <PrimaryButton type="submit">
-                                        {formState.mode === "sub-column"
-                                            ? "Tambah Sub-Kolom"
-                                            : "Tambah Grup Kolom"}
-                                    </PrimaryButton>
-                                </div>
-                            </form>
-                        </div>
-                        {/* Kolom Kanan */}
-                        <div className="md:w-1/3 pt-6 mt-6 md:pt-0 md:mt-0 md:border-l md:pl-8 space-y-8">
-                            <div>
-                                <div className="flex justify-between items-center border-b pb-2 mb-4">
-                                    <h4 className="font-semibold text-md text-gray-800">
-                                        Opsi Tampilan
-                                    </h4>
-                                    <button
-                                        onClick={onSave}
-                                        className="text-xs text-blue-600 hover:underline font-semibold"
-                                    >
-                                        Simpan Tampilan
-                                    </button>
-                                    <button
-                                        onClick={handleResetConfig}
-                                        className="text-xs text-red-600 hover:underline font-semibold"
-                                    >
-                                        Reset Tampilan
-                                    </button>
-                                </div>
-                                <div className="space-y-4">
-                                    <h5 className="font-semibold text-sm text-gray-700">
-                                        Ubah Warna Grup
-                                    </h5>
-                                    <div>
-                                        <label className="block text-sm font-medium text-gray-700">
-                                            Pilih Grup
-                                        </label>
-                                        <select
-                                            value={editGroup.title}
-                                            onChange={handleSelectGroupToEdit}
-                                            className="mt-1 block w-full border-gray-300 rounded-md shadow-sm"
-                                        >
-                                            {tableConfig.map((g) => (
-                                                <option
-                                                    key={g.groupTitle}
-                                                    value={g.groupTitle}
-                                                >
-                                                    {g.groupTitle}
-                                                </option>
-                                            ))}
-                                        </select>
-                                    </div>
-                                    <div>
-                                        <label className="block text-sm font-medium text-gray-700">
-                                            Kelas Warna Dasar Tailwind CSS
-                                        </label>
-                                        <input
-                                            type="text"
-                                            value={editGroup.className}
-                                            onChange={(e) =>
-                                                setEditGroup({
-                                                    ...editGroup,
-                                                    className: e.target.value,
-                                                })
-                                            }
-                                            className="mt-1 block w-full border-gray-300 rounded-md shadow-sm"
-                                            placeholder="Contoh: bg-red-600"
-                                        />
-                                        <p className="mt-1 text-xs text-gray-500">
-                                            Warna sub-kolom akan diatur ke
-                                            kecerahan -100 & -200 secara
-                                            otomatis.
-                                        </p>
-                                    </div>
-                                    <div className="text-right">
-                                        <PrimaryButton
-                                            type="button"
-                                            onClick={handleSaveColor}
-                                            className="w-full justify-center"
-                                        >
-                                            Terapkan Warna
-                                        </PrimaryButton>
-                                    </div>
-                                </div>
-                                <div>
-                                    <h5 className="font-semibold text-sm text-gray-700 pt-4 border-t">
-                                        Edit Kolom
-                                    </h5>
-                                    <div className="space-y-4 mt-4">
-                                        <div>
-                                            <label className="block text-sm font-medium text-gray-700">
-                                                Pilih Kolom untuk Diedit
-                                            </label>
-                                            <select
-                                                value={columnToEdit}
-                                                onChange={
-                                                    handleSelectColumnToEdit
-                                                }
-                                                className="mt-1 block w-full border-gray-300 rounded-md shadow-sm"
-                                                disabled={
-                                                    allColumnsList.length === 0
-                                                }
-                                            >
-                                                <option value="">
-                                                    -- Pilih Kolom --
-                                                </option>
-                                                {allColumnsList.map((col) => (
-                                                    <option
-                                                        key={col.value}
-                                                        value={col.value}
-                                                    >
-                                                        {col.label}
-                                                    </option>
-                                                ))}
-                                            </select>
-                                        </div>
-                                        {editFormState && (
-                                            <form
-                                                onSubmit={handleSaveChanges}
-                                                className="p-4 border rounded-md bg-gray-50 space-y-4"
-                                            >
-                                                <div>
-                                                    <label className="block text-sm font-medium text-gray-700">
-                                                        Nama Kolom
-                                                    </label>
-                                                    <input
-                                                        type="text"
-                                                        value={
-                                                            editFormState.title
-                                                        }
-                                                        onChange={(e) =>
-                                                            setEditFormState(
-                                                                (prev) => ({
-                                                                    ...prev,
-                                                                    title: e
-                                                                        .target
-                                                                        .value,
-                                                                }),
-                                                            )
-                                                        }
-                                                        className="mt-1 block w-full border-gray-300 rounded-md shadow-sm"
-                                                        required
-                                                    />
-                                                </div>
-                                                {editFormState.type ===
-                                                    "calculation" && (
-                                                        <div className="pt-4 border-t space-y-4">
-                                                            <div>
-                                                                <label className="block text-sm font-medium text-gray-700">
-                                                                    Operasi
-                                                                    Kalkulasi
-                                                                </label>
-                                                                <select
-                                                                    name="operation"
-                                                                    value={
-                                                                        editFormState.operation
-                                                                    }
-                                                                    onChange={(e) =>
-                                                                        setEditFormState(
-                                                                            (
-                                                                                prev,
-                                                                            ) => ({
-                                                                                ...prev,
-                                                                                operation:
-                                                                                    e
-                                                                                        .target
-                                                                                        .value,
-                                                                                operands:
-                                                                                    [],
-                                                                            }),
-                                                                        )
-                                                                    }
-                                                                    className="mt-1 block w-full border-gray-300 rounded-md shadow-sm"
-                                                                >
-                                                                    <option value="sum">
-                                                                        SUM
-                                                                        (Jumlahkan)
-                                                                    </option>
-                                                                    <option value="percentage">
-                                                                        PERCENTAGE
-                                                                        (Persentase)
-                                                                    </option>
-                                                                    <option value="average">
-                                                                        AVERAGE
-                                                                        (Rata-rata)
-                                                                    </option>
-                                                                    <option value="count">
-                                                                        COUNT
-                                                                        (Hitung
-                                                                        Jumlah)
-                                                                    </option>
-                                                                </select>
-                                                            </div>
-                                                            {renderOperandInputs(
-                                                                editFormState,
-                                                                setEditFormState,
-                                                                availableColumns,
-                                                            )}
-                                                        </div>
-                                                    )}
-                                                <div className="text-right">
-                                                    <PrimaryButton type="submit">
-                                                        Simpan Perubahan
-                                                    </PrimaryButton>
-                                                </div>
-                                            </form>
-                                        )}
-                                    </div>
-                                </div>
-                            </div>
-                            <div>
-                                <h5 className="font-semibold text-sm text-gray-700 pt-4 border-t">
-                                    Hapus Kolom
-                                </h5>
-                                <div className="space-y-4 mt-4">
-                                    <div>
-                                        <label className="block text-sm font-medium text-gray-700">
-                                            Pilih Kolom untuk Dihapus
-                                        </label>
-                                        <select
-                                            value={columnToDelete}
-                                            onChange={(e) =>
-                                                setColumnToDelete(
-                                                    e.target.value,
-                                                )
-                                            }
-                                            className="mt-1 block w-full border-gray-300 rounded-md shadow-sm"
-                                            disabled={
-                                                allColumnsList.length === 0
-                                            }
-                                        >
-                                            {allColumnsList.length > 0 ? (
-                                                allColumnsList.map((col) => (
-                                                    <option
-                                                        key={col.value}
-                                                        value={col.value}
-                                                    >
-                                                        {col.label}
-                                                    </option>
-                                                ))
-                                            ) : (
-                                                <option>
-                                                    Tidak ada kolom untuk
-                                                    dihapus
-                                                </option>
-                                            )}
-                                        </select>
-                                    </div>
-                                    <div>
-                                        <button
-                                            type="button"
-                                            onClick={handleDeleteColumn}
-                                            className="w-full justify-center px-4 py-2 text-sm font-medium text-white bg-red-600 border border-transparent rounded-md shadow-sm hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 disabled:bg-red-300"
-                                            disabled={
-                                                allColumnsList.length === 0
-                                            }
-                                        >
-                                            Hapus Kolom Terpilih
-                                        </button>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            )}
-        </div>
-    );
-};
-
-const smeTableConfigTemplate = [
-    // In Progress (Tetap Sama)
-    {
-        groupTitle: "In Progress",
-        groupClass: "bg-blue-600",
-        columnClass: "bg-blue-400",
-        columns: [
-            { key: "in_progress_n", title: "N" },
-            { key: "in_progress_o", title: "O" },
-            { key: "in_progress_ae", title: "AE" },
-            { key: "in_progress_ps", title: "PS" },
-        ],
-    },
-    // Prov Comp (Urutan diubah menjadi T, R, P)
-    {
-        groupTitle: "Prov Comp",
-        groupClass: "bg-orange-600",
-        columnClass: "bg-orange-400",
-        subColumnClass: "bg-orange-300",
-        columns: [
-            {
-                key: "prov_comp_n",
-                title: "N",
-                subColumns: [
-                    { key: "_target", title: "T" },
-                    { key: "_realisasi", title: "R" },
-                    {
-                        key: "_percent",
-                        title: "P",
-                        type: "calculation",
-                        calculation: {
-                            operation: "percentage",
-                            operands: [
-                                "prov_comp_n_realisasi",
-                                "prov_comp_n_target",
-                            ],
-                        },
-                    },
-                ],
-            },
-            {
-                key: "prov_comp_o",
-                title: "O",
-                subColumns: [
-                    { key: "_target", title: "T" },
-                    { key: "_realisasi", title: "R" },
-                    {
-                        key: "_percent",
-                        title: "P",
-                        type: "calculation",
-                        calculation: {
-                            operation: "percentage",
-                            operands: [
-                                "prov_comp_o_realisasi",
-                                "prov_comp_o_target",
-                            ],
-                        },
-                    },
-                ],
-            },
-            {
-                key: "prov_comp_ae",
-                title: "AE",
-                subColumns: [
-                    { key: "_target", title: "T" },
-                    { key: "_realisasi", title: "R" },
-                    {
-                        key: "_percent",
-                        title: "P",
-                        type: "calculation",
-                        calculation: {
-                            operation: "percentage",
-                            operands: [
-                                "prov_comp_ae_realisasi",
-                                "prov_comp_ae_target",
-                            ],
-                        },
-                    },
-                ],
-            },
-            {
-                key: "prov_comp_ps",
-                title: "PS",
-                subColumns: [
-                    { key: "_target", title: "T" },
-                    { key: "_realisasi", title: "R" },
-                    {
-                        key: "_percent",
-                        title: "P",
-                        type: "calculation",
-                        calculation: {
-                            operation: "percentage",
-                            operands: [
-                                "prov_comp_ps_realisasi",
-                                "prov_comp_ps_target",
-                            ],
-                        },
-                    },
-                ],
-            },
-        ],
-    },
-    // REVENUE (Urutan diubah menjadi ACH, T)
-    {
-        groupTitle: "REVENUE (Rp Juta)",
-        groupClass: "bg-green-700",
-        columnClass: "bg-green-500",
-        subColumnClass: "bg-green-300",
-        columns: [
-            {
-                key: "revenue_n",
-                title: "N",
-                subColumns: [
-                    { key: "_ach", title: "ACH" },
-                    { key: "_target", title: "T" },
-                ],
-            },
-            {
-                key: "revenue_o",
-                title: "O",
-                subColumns: [
-                    { key: "_ach", title: "ACH" },
-                    { key: "_target", title: "T" },
-                ],
-            },
-            {
-                key: "revenue_ae",
-                title: "AE",
-                subColumns: [
-                    { key: "_ach", title: "ACH" },
-                    { key: "_target", title: "T" },
-                ],
-            },
-            {
-                key: "revenue_ps",
-                title: "PS",
-                subColumns: [
-                    { key: "_ach", title: "ACH" },
-                    { key: "_target", title: "T" },
-                ],
-            },
-        ],
-    },
-    {
-        groupTitle: "Grand Total",
-        groupClass: "bg-gray-600",
-        columnClass: "bg-gray-500",
-        columns: [
-            {
-                key: "grand_total_target",
-                title: "T",
-                type: "calculation",
-                calculation: {
-                    operation: "sum",
-                    operands: [
-                        "prov_comp_n_target",
-                        "prov_comp_o_target",
-                        "prov_comp_ae_target",
-                        "prov_comp_ps_target",
-                    ],
-                },
-            },
-            {
-                key: "grand_total_realisasi",
-                title: "R",
-                type: "calculation",
-                calculation: {
-                    operation: "sum",
-                    operands: [
-                        "prov_comp_n_realisasi",
-                        "prov_comp_o_realisasi",
-                        "prov_comp_ae_realisasi",
-                        "prov_comp_ps_realisasi",
-                    ],
-                },
-            },
-            {
-                key: "grand_total_persentase",
-                title: "P",
-                type: "calculation",
-                calculation: {
-                    operation: "percentage",
-                    operands: ["grand_total_realisasi", "grand_total_target"],
-                },
-            },
-        ],
-    },
-];
-
-const legsTableConfigTemplate = [
-    {
-        groupTitle: "In Progress",
-        groupClass: "bg-blue-600",
-        columnClass: "bg-blue-400",
-        columns: [
-            { key: "in_progress_n", title: "N" },
-            { key: "in_progress_o", title: "O" },
-            { key: "in_progress_ae", title: "AE" },
-            { key: "in_progress_ps", title: "PS" },
-        ],
-    },
-    {
-        groupTitle: "Prov Comp",
-        groupClass: "bg-orange-600",
-        columnClass: "bg-orange-400",
-        columns: [
-            { key: "prov_comp_n_realisasi", title: "N" },
-            { key: "prov_comp_o_realisasi", title: "O" },
-            { key: "prov_comp_ae_realisasi", title: "AE" },
-            { key: "prov_comp_ps_realisasi", title: "PS" },
-        ],
-    },
-    {
-        groupTitle: "REVENUE (Rp Juta)",
-        groupClass: "bg-green-700",
-        columnClass: "bg-green-500",
-        subColumnClass: "bg-green-300",
-        columns: [
-            {
-                key: "revenue_n",
-                title: "N",
-                subColumns: [
-                    { key: "_ach", title: "ACH" },
-                    { key: "_target", title: "T" },
-                ],
-            },
-            {
-                key: "revenue_o",
-                title: "O",
-                subColumns: [
-                    { key: "_ach", title: "ACH" },
-                    { key: "_target", title: "T" },
-                ],
-            },
-            {
-                key: "revenue_ae",
-                title: "AE",
-                subColumns: [
-                    { key: "_ach", title: "ACH" },
-                    { key: "_target", title: "T" },
-                ],
-            },
-            {
-                key: "revenue_ps",
-                title: "PS",
-                subColumns: [
-                    { key: "_ach", title: "ACH" },
-                    { key: "_target", title: "T" },
-                ],
-            },
-        ],
-    },
-    {
-        groupTitle: "Grand Total",
-        groupClass: "bg-gray-600",
-        columnClass: "bg-gray-500",
-        columns: [
-            {
-                key: "grand_total_realisasi_legs",
-                title: "Total",
-                type: "calculation",
-                calculation: {
-                    operation: "sum",
-                    operands: [
-                        "prov_comp_n_realisasi",
-                        "prov_comp_o_realisasi",
-                        "prov_comp_ae_realisasi",
-                        "prov_comp_ps_realisasi",
-                    ],
-                },
-            },
-        ],
-    },
-];
-
 const CustomTargetForm = ({
     tableConfig,
     witelList,
@@ -3023,9 +439,6 @@ const CustomTargetForm = ({
 // ===================================================================
 // Main Page Component
 // ===================================================================
-// ===================================================================
-// Main Page Component
-// ===================================================================
 // GANTI SELURUH FUNGSI KOMPONEN UTAMA ANDA DENGAN INI
 export default function AnalysisDigitalProduct({
     auth,
@@ -3037,91 +450,56 @@ export default function AnalysisDigitalProduct({
     completeData = { data: [], links: [] },
     historyData = { data: [], links: [], total: 0 },
     accountOfficers = [],
+    netPriceData = { data: [], links: [] },
     kpiData = [],
     qcData = { data: [], links: [] },
     currentInProgressYear,
-    filters = {},
+    initialFilters = {},
     flash = {},
     errors: pageErrors = {},
     customTargets = {},
+    tabCounts = { inprogress: 0, complete: 0, qc: 0, history: 0, netprice: 0 },
 }) {
-    // const [tableConfig, setTableConfig] = useState(() => {
-    //     const storageKey = `userTableConfig_${currentSegment}`;
-    //     const localConfigString = localStorage.getItem(storageKey);
-    //     const defaultConfig =
-    //         currentSegment === "SME"
-    //             ? smeTableConfigTemplate
-    //             : legsTableConfigTemplate;
+    const { props } = usePage();
+    const { filters } = props;
 
-    //     // Prioritas 1: Gunakan data dari server jika ada.
-    //     if (
-    //         savedTableConfig &&
-    //         Array.isArray(savedTableConfig) &&
-    //         savedTableConfig.length > 0
-    //     ) {
-    //         console.log(
-    //             "State diinisialisasi dari `savedTableConfig` (database).",
-    //         );
-    //         return savedTableConfig;
-    //     }
+    const activeDetailView = filters.tab || 'inprogress';
 
-    //     // Prioritas 2: Jika tidak ada dari server, coba ambil dari localStorage.
-    //     // Ini penting untuk menjaga perubahan yang belum disimpan saat filter/segmen berubah.
-    //     if (localConfigString) {
-    //         try {
-    //             const localConfig = JSON.parse(localConfigString);
-    //             console.log("State diinisialisasi dari localStorage.");
-    //             return localConfig;
-    //         } catch (e) {
-    //             console.error("Gagal parse config dari localStorage", e);
-    //         }
-    //     }
-
-    //     // Prioritas 3: Fallback ke template default.
-    //     console.log("State diinisialisasi dari template default.");
-    //     return defaultConfig;
+    // const [localFilters, setLocalFilters] = useState({
+    //     period: filters.period || '',
+    //     segment: filters.segment || 'SME',
     // });
 
-    // useEffect(() => {
-    //     if (tableConfig && tableConfig.length > 0) {
-    //         const storageKey = `userTableConfig_${currentSegment}`;
-    //         localStorage.setItem(storageKey, JSON.stringify(tableConfig));
-    //         console.log(
-    //             `Config saved to localStorage for segment: ${currentSegment}`,
-    //         );
-    //     }
-    // }, [tableConfig]);
-
-    const [localFilters, setLocalFilters] = useState({
-        period: filters.period || '',
-        segment: filters.segment || 'SME',
-    });
-
     useEffect(() => {
-        // Gunakan debounce untuk mencegah request berlebihan jika user mengganti filter dengan cepat
-        const debouncedFilter = debounce(() => {
-            const query = { ...filters, ...localFilters }; // Gabungkan filter lama dan baru
+        if (flash.success) toast.success(flash.success);
+        if (flash.error) toast.error(flash.error);
+    }, [flash]);
 
-            // Hapus parameter kosong agar URL bersih
-            Object.keys(query).forEach(key => {
-                if (query[key] === '' || query[key] === null || query[key] === undefined) {
-                    delete query[key];
-                }
-            });
+    // useEffect(() => {
+    //     // Gunakan debounce untuk mencegah request berlebihan jika user mengganti filter dengan cepat
+    //     const debouncedFilter = debounce(() => {
+    //         const query = { ...filters, ...localFilters }; // Gabungkan filter lama dan baru
 
-            router.get(route('admin.analysisDigitalProduct.index'), query, {
-                preserveState: true,
-                preserveScroll: true,
-                replace: true,
-            });
-        }, 300); // Tunggu 300ms setelah user berhenti mengubah filter
+    //         // Hapus parameter kosong agar URL bersih
+    //         Object.keys(query).forEach(key => {
+    //             if (query[key] === '' || query[key] === null || query[key] === undefined) {
+    //                 delete query[key];
+    //             }
+    //         });
 
-        debouncedFilter();
+    //         router.get(route('admin.analysisDigitalProduct.index'), query, {
+    //             preserveState: true,
+    //             preserveScroll: true,
+    //             replace: true,
+    //         });
+    //     }, 300); // Tunggu 300ms setelah user berhenti mengubah filter
 
-        // Cleanup function untuk debounce
-        return () => debouncedFilter.cancel();
+    //     debouncedFilter();
 
-    }, [localFilters]);
+    //     // Cleanup function untuk debounce
+    //     return () => debouncedFilter.cancel();
+
+    // }, [localFilters]);
 
     useEffect(() => {
         if (flash.success) {
@@ -3204,7 +582,6 @@ export default function AnalysisDigitalProduct({
         );
     };
 
-    const [activeDetailView, setActiveDetailView] = useState("inprogress");
     const [search, setSearch] = useState(filters.search || "");
     const [decimalPlaces, setDecimalPlaces] = useState(2);
     const [selectedWitel, setSelectedWitel] = useState(filters.witel || "");
@@ -3262,6 +639,7 @@ export default function AnalysisDigitalProduct({
     };
 
     const [progressStates, setProgressStates] = useState({
+        upload: null,
         mentah: null,
         complete: null,
         cancel: null,
@@ -3272,56 +650,50 @@ export default function AnalysisDigitalProduct({
         const batchId = urlParams.get("batch_id");
         const jobType = urlParams.get("job_type");
 
+        // Fungsi untuk membersihkan URL setelah selesai
         const cleanUrl = () => {
             const currentUrl = new URL(window.location.href);
             currentUrl.searchParams.delete("batch_id");
             currentUrl.searchParams.delete("job_type");
-            window.history.replaceState(
-                {},
-                document.title,
-                currentUrl.toString(),
-            );
+            window.history.replaceState({}, document.title, currentUrl.toString());
         };
 
+        // Gunakan kondisi 'if' yang lebih sederhana dan andal dari kode lama Anda
         if (batchId && jobType && progressStates[jobType] === null) {
+
+            // Langsung set progress ke 0 agar progress bar muncul
             setProgressStates((prev) => ({ ...prev, [jobType]: 0 }));
+
             const interval = setInterval(() => {
-                axios
-                    .get(route("admin.import.progress", { batchId }))
+                axios.get(route("import.progress", { batchId }))
                     .then((response) => {
-                        const progress = response.data.progress;
-                        setProgressStates((prev) => ({
-                            ...prev,
-                            [jobType]: progress,
-                        }));
+                        const progress = response.data.progress ?? 0;
+                        setProgressStates((prev) => ({ ...prev, [jobType]: progress }));
+
                         if (progress >= 100) {
                             clearInterval(interval);
                             setTimeout(() => {
-                                setProgressStates((prev) => ({
-                                    ...prev,
-                                    [jobType]: null,
-                                }));
+                                setProgressStates((prev) => ({ ...prev, [jobType]: null }));
                                 cleanUrl();
                                 router.reload({
-                                    preserveState: false,
                                     preserveScroll: true,
+                                    // Anda bisa sesuaikan 'only' jika perlu
                                 });
-                            }, 2000);
+                            }, 1500); // Beri jeda 1.5 detik
                         }
                     })
                     .catch((error) => {
                         console.error("Gagal mengambil progres job:", error);
                         clearInterval(interval);
-                        setProgressStates((prev) => ({
-                            ...prev,
-                            [jobType]: null,
-                        }));
+                        setProgressStates((prev) => ({ ...prev, [jobType]: null }));
                         cleanUrl();
                     });
-            }, 2000);
+            }, 1000); // Interval polling setiap 1 detik
+
             return () => clearInterval(interval);
         }
-    }, []);
+    }, []); // Dependency array kosong agar hanya berjalan sekali saat mount
+
 
     const {
         data: uploadData,
@@ -3533,15 +905,6 @@ export default function AnalysisDigitalProduct({
         return options;
     };
 
-    const DetailTabButton = ({ viewName, currentView, setView, children }) => (
-        <button
-            onClick={() => setView(viewName)}
-            className={`px-4 py-2 text-sm font-semibold rounded-md transition-colors ${currentView === viewName ? "bg-blue-600 text-white shadow" : "bg-white text-gray-600 hover:bg-gray-100"}`}
-        >
-            {children}
-        </button>
-    );
-
     const handleClearHistory = async () => {
         const result = await MySwal.fire({
             title: 'Anda Yakin?',
@@ -3571,27 +934,9 @@ export default function AnalysisDigitalProduct({
         }
     };
 
-    // ... sisa dari komponen Anda (return statement) tidak perlu diubah ...
     return (
         <AuthenticatedLayout auth={auth} header="Analysis Digital Product">
             <Head title="Analysis Digital Product" />
-
-            {/* {flash.success && (
-                <div
-                    className="mb-4 bg-green-100 border-l-4 border-green-500 text-green-700 p-4"
-                    role="alert"
-                >
-                    <p>{flash.success}</p>
-                </div>
-            )}
-            {flash.error && (
-                <div
-                    className="mb-4 bg-red-100 border-l-4 border-red-500 text-red-700 p-4"
-                    role="alert"
-                >
-                    <p>{flash.error}</p>
-                </div>
-            )} */}
 
             <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
                 <div className="lg:col-span-3 space-y-6">
@@ -3636,15 +981,23 @@ export default function AnalysisDigitalProduct({
                                     />
                                 </div>
                                 <select
-                                    value={localFilters.period} // Gunakan state lokal
-                                    onChange={(e) => setLocalFilters(prev => ({ ...prev, period: e.target.value }))} // Update state lokal
+                                    value={filters.period || ''} // Gunakan filters dari props
+                                    onChange={(e) => router.get(route('admin.analysisDigitalProduct.index'), {
+                                        ...filters, // Pertahankan filter yang sudah ada
+                                        period: e.target.value, // Set nilai baru
+                                        page: 1 // Wajib reset ke halaman 1 saat filter berubah
+                                    }, { preserveState: true, replace: true })}
                                     className="border border-gray-300 rounded-md text-sm p-2"
                                 >
                                     {generatePeriodOptions()}
                                 </select>
                                 <select
-                                    value={localFilters.segment} // Gunakan state lokal
-                                    onChange={(e) => setLocalFilters(prev => ({ ...prev, segment: e.target.value }))} // Update state lokal
+                                    value={filters.segment || 'SME'} // Gunakan filters dari props
+                                    onChange={(e) => router.get(route('admin.analysisDigitalProduct.index'), {
+                                        ...filters, // Pertahankan filter yang sudah ada
+                                        segment: e.target.value, // Set nilai baru
+                                        page: 1 // Wajib reset ke halaman 1 saat filter berubah
+                                    }, { preserveState: true, replace: true })}
                                     className="border border-gray-300 rounded-md text-sm p-2"
                                 >
                                     <option value="LEGS">LEGS</option>
@@ -3663,57 +1016,51 @@ export default function AnalysisDigitalProduct({
                     <div className="bg-white p-6 rounded-lg shadow-md">
                         <div className="flex flex-wrap justify-between items-center mb-4 gap-4">
                             <div className="flex items-center gap-2 border p-1 rounded-lg bg-gray-50 w-fit">
-                                <DetailTabButton
-                                    viewName="inprogress"
-                                    currentView={activeDetailView}
-                                    setView={setActiveDetailView}
-                                >
-                                    In Progress ({inProgressData.total})
-                                </DetailTabButton>
-                                <DetailTabButton
-                                    viewName="complete"
-                                    currentView={activeDetailView}
-                                    setView={setActiveDetailView}
-                                >
-                                    Complete ({completeData.total})
-                                </DetailTabButton>
-                                <DetailTabButton
-                                    viewName="qc"
-                                    currentView={activeDetailView}
-                                    setView={setActiveDetailView}
-                                >
-                                    QC ({qcData.total})
-                                </DetailTabButton>
-                                <DetailTabButton
-                                    viewName="history"
-                                    currentView={activeDetailView}
-                                    setView={setActiveDetailView}
-                                >
-                                    History ({historyData.total})
-                                </DetailTabButton>
-                                <DetailTabButton
-                                    viewName="kpi"
-                                    currentView={activeDetailView}
-                                    setView={setActiveDetailView}
-                                >
-                                    KPI PO
-                                </DetailTabButton>
+                                <DetailTabButton viewName="inprogress" currentView={activeDetailView}>In Progress ({tabCounts.inprogress})</DetailTabButton>
+                                <DetailTabButton viewName="complete" currentView={activeDetailView}>Complete ({tabCounts.complete})</DetailTabButton>
+                                <DetailTabButton viewName="qc" currentView={activeDetailView}>QC ({tabCounts.qc})</DetailTabButton>
+                                <DetailTabButton viewName="history" currentView={activeDetailView}>History ({tabCounts.history})</DetailTabButton>
+                                <DetailTabButton viewName="netprice" currentView={activeDetailView}>Net Price ({tabCounts.netprice})</DetailTabButton>
+                                <DetailTabButton viewName="kpi" currentView={activeDetailView}>KPI PO</DetailTabButton>
                             </div>
 
+                            {activeDetailView === "netprice" && (
+                                <select
+                                    value={filters.net_price_status || ''}
+                                    onChange={(e) => router.get(route('admin.analysisDigitalProduct.index'), {
+                                        ...filters, // Pertahankan filter yang ada
+                                        net_price_status: e.target.value, // Set nilai filter baru
+                                        tab: activeDetailView, // <-- INI KUNCINYA: pastikan tab tetap 'netprice'
+                                        page: 1 // Selalu kembali ke halaman 1 saat filter diubah
+                                    }, { preserveState: true, replace: true })}
+                                    className="border border-gray-300 rounded-md text-sm p-2"
+                                >
+                                    <option value="">Semua Harga</option>
+                                    <option value="template">Harga Template</option>
+                                    <option value="pasti">Harga Pasti</option>
+                                </select>
+                            )}
                             {(activeDetailView === "inprogress" ||
                                 activeDetailView === "complete" ||
-                                activeDetailView === "qc") && (
+                                activeDetailView === "qc"       ||
+                                activeDetailView === "netprice") && (
                                     <div className="flex items-center gap-4 flex-wrap">
                                         <form
-                                            onSubmit={handleSearch}
+                                            onSubmit={(e) => {
+                                                e.preventDefault();
+                                                router.get(route('admin.analysisDigitalProduct.index'), {
+                                                    ...filters, // Pertahankan semua filter yang sudah ada
+                                                    search: search, // Tambahkan/update kata kunci pencarian
+                                                    tab: activeDetailView, // <-- INI KUNCINYA: pastikan tab tetap sama
+                                                    page: 1 // Selalu kembali ke halaman 1 saat melakukan pencarian baru
+                                                }, { preserveState: true, replace: true, preserveScroll: true });
+                                            }}
                                             className="flex items-center gap-2"
                                         >
                                             <input
                                                 type="text"
                                                 value={search}
-                                                onChange={(e) =>
-                                                    setSearch(e.target.value)
-                                                }
+                                                onChange={(e) => setSearch(e.target.value)}
                                                 placeholder="Cari Order ID..."
                                                 className="border border-gray-300 rounded-md text-sm p-2 w-48"
                                             />
@@ -3765,7 +1112,6 @@ export default function AnalysisDigitalProduct({
                                     </button>
                                 </div>
                             )}
-
                             {activeDetailView === "kpi" && (
                                 <div className="w-full md:w-auto">
                                     <a
@@ -3779,19 +1125,22 @@ export default function AnalysisDigitalProduct({
                         </div>
 
                         {activeDetailView === "inprogress" && (
-                            <InProgressTable dataPaginator={inProgressData} />
+                            <InProgressAnalysisTable dataPaginator={inProgressData} activeView={activeDetailView}/>
                         )}
                         {activeDetailView === "complete" && (
-                            <CompleteTable dataPaginator={completeData} />
+                            <CompleteTable dataPaginator={completeData} activeView={activeDetailView}/>
                         )}
                         {activeDetailView === "history" && (
-                            <HistoryTable historyData={historyData} />
+                            <HistoryTable historyData={historyData} activeView={activeDetailView}/>
                         )}
                         {activeDetailView === "qc" && (
-                            <QcTable dataPaginator={qcData} />
+                            <QcTable dataPaginator={qcData} activeView={activeDetailView}/>
+                        )}
+                        {activeDetailView === "netprice" && (
+                            <NetPriceTable dataPaginator={netPriceData} activeView={activeDetailView}/>
                         )}
                         {activeDetailView === "kpi" && (
-                            <KpiTable
+                            <KPIPOAnalysisTable
                                 data={kpiData}
                                 accountOfficers={accountOfficers}
                                 openModal={openModal}

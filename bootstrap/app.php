@@ -12,21 +12,19 @@ return Application::configure(basePath: dirname(__DIR__))
         health: '/up',
     )
     ->withMiddleware(function (Middleware $middleware) {
-
         // --- TAMBAHKAN BAGIAN INI ---
         // Ini memuat middleware 'web' yang penting, termasuk StartSession
         // dan middleware Inertia.
         $middleware->web(append: [
-            \App\Http\Middleware\HandleInertiaRequests::class,
+            App\Http\Middleware\HandleInertiaRequests::class,
         ]);
         // --- AKHIR DARI BAGIAN YANG DITAMBAHKAN ---
 
         // Alias Anda sudah benar, biarkan seperti ini.
         $middleware->alias([
-            'role' => \App\Http\Middleware\CheckRole::class,
-            'guest' => \App\Http\Middleware\RedirectIfAuthenticated::class,
+            'role' => App\Http\Middleware\CheckRole::class,
+            'guest' => App\Http\Middleware\RedirectIfAuthenticated::class,
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions) {
-        //
     })->create();
