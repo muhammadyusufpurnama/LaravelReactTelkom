@@ -14,7 +14,6 @@ class ExcelMergeController extends Controller
 {
     public function create()
     {
-        // Ambil hasil merge terakhir dari session
         $lastResult = session()->get('last_merge_result_'.auth()->id());
 
         return Inertia::render('Admin/MergeExcel', [
@@ -27,14 +26,15 @@ class ExcelMergeController extends Controller
         Log::info('=== MERGE REQUEST STARTED ===');
 
         $request->validate([
-            'files' => 'required|array|min:1|max:10',
-            'files.*' => 'file|max:20480', // <-- HAPUS 'mimes:...' DARI SINI
+            // --- MODIFIKASI DI SINI ---
+            'files' => 'required|array|min:1|max:20',
+            'files.*' => 'file|max:20480', // Validasi 'mimes' sudah kita hapus sebelumnya
         ], [
-            // 'files.*.mimes' => '...', // HAPUS JUGA PESAN ERROR MIMES
             'files.*.max' => 'Ukuran setiap file tidak boleh lebih dari 20MB.',
             'files.required' => 'Anda harus memilih setidaknya satu file untuk diunggah.',
             'files.min' => 'Anda harus memilih setidaknya satu file untuk diunggah.',
-            'files.max' => 'Anda hanya dapat mengunggah maksimal 10 file sekaligus.',
+            // --- MODIFIKASI DI SINI ---
+            'files.max' => 'Anda hanya dapat mengunggah maksimal 20 file sekaligus.',
         ]);
 
         Log::info('Validation passed, processing '.count($request->file('files')).' files');
@@ -43,7 +43,6 @@ class ExcelMergeController extends Controller
         $directory = 'temp-merges/'.uniqid();
 
         try {
-            // Simpan file yang diupload
             foreach ($request->file('files') as $file) {
                 $extension = strtolower($file->getClientOriginalExtension());
 
@@ -61,10 +60,7 @@ class ExcelMergeController extends Controller
                 Log::info("File stored: {$path}");
             }
 
-            // Proses merge secara synchronous (tanpa queue)
             $mergeResult = $this->processMerge($filePaths);
-
-            // Hapus file temporary
             $this->cleanupTempFiles($directory);
 
             Log::info('=== MERGE PROCESS COMPLETED ===');
@@ -76,8 +72,6 @@ class ExcelMergeController extends Controller
             ]);
         } catch (\Exception $e) {
             Log::error('Merge process failed: '.$e->getMessage());
-
-            // Cleanup jika ada error
             if (isset($directory)) {
                 $this->cleanupTempFiles($directory);
             }
@@ -86,16 +80,11 @@ class ExcelMergeController extends Controller
         }
     }
 
-    /**
-     * Proses merge file secara synchronous.
-     */
     protected function processMerge($filePaths)
     {
         $filesWithInfo = [];
-
         foreach ($filePaths as $fileInfo) {
             $path = $fileInfo['path'];
-
             if (Storage::disk('public')->exists($path)) {
                 $absolutePath = Storage::disk('public')->path($path);
                 $filesWithInfo[] = [
@@ -113,24 +102,18 @@ class ExcelMergeController extends Controller
             throw new \Exception('Tidak ada file valid yang ditemukan');
         }
 
-        // Generate nama file hasil
         $fileName = 'merged_files_'.now()->format('Ymd_His').'.xlsx';
         $exportPath = 'merged-results/'.$fileName;
 
-        // Pastikan directory exists
         $directory = dirname(Storage::disk('public')->path($exportPath));
         if (!is_dir($directory)) {
             mkdir($directory, 0755, true);
         }
 
         Log::info("Starting Excel export to: {$exportPath}");
-
-        // Proses export
         Excel::store(new MergedFilesExport($filesWithInfo), $exportPath, 'public');
-
         Log::info("Excel export completed: {$exportPath}");
 
-        // Simpan ke session
         $mergeResult = [
             'file_name' => $fileName,
             'file_path' => $exportPath,
@@ -143,9 +126,6 @@ class ExcelMergeController extends Controller
         return $mergeResult;
     }
 
-    /**
-     * Cleanup temporary files.
-     */
     protected function cleanupTempFiles($directory)
     {
         try {
@@ -158,19 +138,14 @@ class ExcelMergeController extends Controller
         }
     }
 
-    /**
-     * Download file hasil merge.
-     */
     public function download(Request $request)
     {
         $filePath = $request->query('file_path');
 
         if (!$filePath) {
-            // Menggunakan redirect Inertia untuk menampilkan error
             return back()->with('error', 'Parameter file_path diperlukan.');
         }
 
-        // Validasi path untuk keamanan (sudah bagus)
         if (strpos($filePath, 'merged-results/') !== 0 || !Storage::disk('public')->exists($filePath)) {
             return back()->with('error', 'File tidak ditemukan atau path tidak valid.');
         }
@@ -180,7 +155,7 @@ class ExcelMergeController extends Controller
 
         Log::info("Downloading file: {$filePath} as {$fileName}");
 
-        // Menggunakan response()->download() yang lebih eksplisit
+        // Menggunakan response()->download() dan hapus file setelah dikirim
         return response()->download($fullPath, $fileName)->deleteFileAfterSend(true);
     }
 }

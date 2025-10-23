@@ -7,15 +7,14 @@ export default function MergeExcel({ auth, lastMergeResult }) {
     const { flash, errors } = props;
 
     const { data, setData, post, processing, reset } = useForm({
-        files: [],
+        files: null, // Mulai dengan null atau FileList kosong
     });
 
     const [mergeResult, setMergeResult] = useState(lastMergeResult || null);
 
-    // Ini digunakan untuk menampilkan daftar file yang dipilih
+    // Konversi FileList menjadi array HANYA untuk tampilan
     const selectedFiles = data.files ? Array.from(data.files) : [];
 
-    // Kita tetap gunakan useEffect untuk memuat hasil dari sesi jika pengguna me-refresh halaman
     useEffect(() => {
         if (flash && flash.mergeResult) {
             setMergeResult(flash.mergeResult);
@@ -24,6 +23,19 @@ export default function MergeExcel({ auth, lastMergeResult }) {
 
     const handleFileChange = (e) => {
         const files = e.target.files;
+
+        if (files && files.length > 0) {
+            // --- MODIFIKASI: Validasi Sisi Klien ---
+            if (files.length > 20) {
+                alert(`Anda memilih ${files.length} file. Maksimal 20 file yang diperbolehkan.`);
+                e.target.value = null; // Reset input
+                setData('files', null); // Reset state
+                return;
+            }
+            // (Validasi lain seperti ukuran & tipe bisa ditambahkan di sini jika perlu)
+            // --- Akhir Modifikasi ---
+        }
+
         // Langsung set FileList, ini cara paling andal
         setData('files', files);
     };
@@ -36,19 +48,15 @@ export default function MergeExcel({ auth, lastMergeResult }) {
         }
 
         post(route('admin.merge-excel.merge'), {
-            // *** INI ADALAH PERUBAHAN KUNCI ***
             onSuccess: (page) => {
-                // 'page.props' berisi semua data baru dari server
                 if (page.props.flash && page.props.flash.mergeResult) {
-                    // Langsung set state dari sini, ini cara paling aman
                     setMergeResult(page.props.flash.mergeResult);
                 }
-                reset('files'); // Hanya reset field 'files'
+                reset('files');
                 const fileInput = document.getElementById('files-input');
                 if (fileInput) fileInput.value = null;
             },
             onError: () => {
-                // Jika terjadi error, pastikan tidak ada tombol download lama yang tersisa
                 setMergeResult(null);
             },
             preserveScroll: true,
@@ -57,7 +65,6 @@ export default function MergeExcel({ auth, lastMergeResult }) {
 
     const handleDownload = () => {
         if (mergeResult && mergeResult.download_url) {
-            // Kita gunakan download_url yang sudah dibuat di backend
             window.location.href = mergeResult.download_url;
         } else {
             alert("Gagal memulai unduhan: URL download tidak ditemukan.");
@@ -86,7 +93,6 @@ export default function MergeExcel({ auth, lastMergeResult }) {
                                 Unggah beberapa file Excel (.xlsx, .xls, .csv) untuk digabungkan. Header akan diambil dari file pertama.
                             </p>
 
-                            {/* Flash Messages */}
                             {flash.success && (
                                 <div className="mb-4 bg-green-100 border border-green-400 text-green-700 px-4 py-3 rounded">
                                     {flash.success}
@@ -97,8 +103,13 @@ export default function MergeExcel({ auth, lastMergeResult }) {
                                     {flash.error}
                                 </div>
                             )}
+                            {/* Tampilkan error validasi dari server */}
+                            {errors.files && (<p className="mt-1 text-sm text-red-600">{errors.files}</p>)}
+                            {Object.keys(errors).filter(key => key.startsWith('files.')).map(key => (
+                                <p key={key} className="mt-1 text-sm text-red-600">{errors[key]}</p>
+                            ))}
 
-                            {/* === INI SEKARANG AKAN MUNCUL === */}
+
                             {mergeResult && (
                                 <div className="mb-6 bg-blue-50 border border-blue-200 rounded-lg p-4">
                                     <div className="flex items-center justify-between">
@@ -125,6 +136,10 @@ export default function MergeExcel({ auth, lastMergeResult }) {
                                         className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"
                                         disabled={processing}
                                     />
+                                    {/* --- MODIFIKASI: Teks Bantuan --- */}
+                                    <p className="mt-1 text-xs text-gray-500">
+                                        Format yang didukung: .xlsx, .xls, .csv (Maksimal 20 file, 20MB per file)
+                                    </p>
                                 </div>
 
                                 {selectedFiles.length > 0 && (
