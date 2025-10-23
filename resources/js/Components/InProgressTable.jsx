@@ -20,10 +20,6 @@ const formatDate = (dateString) => {
 // [PERUBAHAN 1] Terima prop `showActions` dengan nilai default true
 const InProgressTable = ({ dataPaginator = { data: [], links: [], from: 0 }, showActions = true }) => {
 
-    // ... (Fungsi handleCompleteClick dan handleCancelClick tidak perlu diubah) ...
-    const handleCompleteClick = async (orderId) => { /* ... */ };
-    const handleCancelClick = async (orderId) => { /* ... */ };
-
     return (
         <>
             <div className="overflow-x-auto text-sm">

@@ -228,9 +228,9 @@ export default function DashboardDigitalProduct({
                     </table>
                 </div>
                 {dataPreview?.links?.length > 0 && dataPreview.total > 0 && (
-                    <div className="mt-4 flex justify-between items-center text-sm text-gray-600">
+                    <div className="mt-4 flex flex-col sm:flex-row justify-between items-center text-sm text-gray-600 gap-4">
                         <span>Menampilkan {dataPreview.from} sampai {dataPreview.to} dari {dataPreview.total} hasil</span>
-                        <div className="flex items-center">
+                        <div className="flex items-center flex-wrap justify-center sm:justify-end">
                             {dataPreview.links.map((link, index) => (
                                 <Link key={index} href={link.url || '#'} className={`px-3 py-1 border rounded-md mx-1 transition ${link.active ? 'bg-blue-600 text-white' : 'bg-white hover:bg-gray-100'} ${!link.url ? 'text-gray-400 cursor-not-allowed' : ''}`} dangerouslySetInnerHTML={{ __html: link.label }} as="button" disabled={!link.url} preserveScroll />
                             ))}

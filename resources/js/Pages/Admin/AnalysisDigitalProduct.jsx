@@ -952,7 +952,7 @@ export default function AnalysisDigitalProduct({
                             <h3 className="font-semibold text-lg text-gray-800">
                                 Data Report
                             </h3>
-                            <div className="flex items-center gap-4">
+                            <div className="flex flex-wrap items-center justify-start sm:justify-end gap-4 w-full sm:w-auto">
                                 <button
                                     onClick={handleExportReport}
                                     className="px-4 py-2 text-sm font-bold text-white bg-green-600 rounded-md hover:bg-green-700 whitespace-nowrap"
@@ -1015,7 +1015,7 @@ export default function AnalysisDigitalProduct({
 
                     <div className="bg-white p-6 rounded-lg shadow-md">
                         <div className="flex flex-wrap justify-between items-center mb-4 gap-4">
-                            <div className="flex items-center gap-2 border p-1 rounded-lg bg-gray-50 w-fit">
+                            <div className="flex flex-wrap items-center gap-2 border p-1 rounded-lg bg-gray-50">
                                 <DetailTabButton viewName="inprogress" currentView={activeDetailView}>In Progress ({tabCounts.inprogress})</DetailTabButton>
                                 <DetailTabButton viewName="complete" currentView={activeDetailView}>Complete ({tabCounts.complete})</DetailTabButton>
                                 <DetailTabButton viewName="qc" currentView={activeDetailView}>QC ({tabCounts.qc})</DetailTabButton>
@@ -1071,7 +1071,7 @@ export default function AnalysisDigitalProduct({
                                     </div>
                                 )}
                             {activeDetailView === "inprogress" && (
-                                <div className="flex items-center gap-2 flex-wrap">
+                                <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-4">
                                     <select
                                         value={selectedWitel}
                                         onChange={handleWitelChange}

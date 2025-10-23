@@ -296,7 +296,7 @@ export default function DataReport({ smeReportData, legsReportData, inProgressDa
                                     <h2 className="text-lg font-medium text-gray-900">In Progress Orders</h2>
                                     <p className="mt-1 text-sm text-gray-600">Daftar order yang sedang dalam proses.</p>
                                 </div>
-                                <div className="flex items-center gap-4 mt-4 sm:mt-0">
+                                <div className="flex flex-wrap items-center sm:justify-end gap-4 mt-4 sm:mt-0">
                                     <button
                                         onClick={handleExportInProgress}
                                         className="inline-flex items-center px-4 py-2 bg-green-600 border border-transparent rounded-md font-semibold text-xs text-white uppercase tracking-widest hover:bg-green-700"

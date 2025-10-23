@@ -18,31 +18,42 @@ export default function AuthenticatedLayout({ header, children }) {
     const { auth, component } = usePage().props; // [FIX 1] Ambil nama komponen saat ini
     const user = auth?.user;
 
-    const [isSidebarOpen, setIsSidebarOpen] = useState(true);
+    const isDesktop = () => window.innerWidth >= 1024;
+
+    const [isSidebarOpen, setIsSidebarOpen] = useState(isDesktop());
     const toggleSidebar = () => setIsSidebarOpen(prevState => !prevState);
+
+    useEffect(() => {
+        const handleResize = () => {
+            // Jika layar berubah jadi desktop, buka sidebar.
+            // Jika berubah jadi mobile, tutup sidebar.
+            if (isDesktop()) {
+                setIsSidebarOpen(true);
+            } else {
+                setIsSidebarOpen(false);
+            }
+        };
+
+        window.addEventListener('resize', handleResize);
+        // Cleanup listener saat komponen dibongkar
+        return () => window.removeEventListener('resize', handleResize);
+    }, []);
 
     const [isCmsMode, setIsCmsMode] = useState(() => {
         return localStorage.getItem('isCmsMode') === 'true';
     });
     const prevIsCmsMode = usePrevious(isCmsMode);
 
+    const handleLogout = () => {
+        // Logika ini sekarang akan dijalankan dari komponen induk
+        localStorage.setItem('isCmsMode', 'false');
+        console.log('CMS mode set to false from Layout. Logging out...');
+        router.post(route('logout'));
+    };
+
     useEffect(() => {
         localStorage.setItem('isCmsMode', isCmsMode);
     }, [isCmsMode]);
-
-    // [FIX 2] EFEK UNTUK SINKRONISASI SAAT LOGIN
-    // Efek ini berjalan hanya sekali saat layout dimuat.
-    useEffect(() => {
-        // Logika: Jika halaman yang dimuat adalah dashboard utama,
-        // ini kemungkinan besar terjadi setelah login.
-        // Kita paksa mode CMS menjadi nonaktif untuk memastikan state awal yang bersih.
-        if (component === 'DashboardDigitalProduct') {
-            if (isCmsMode) {
-                console.log("Login detected on dashboard, forcing User Mode.");
-                setIsCmsMode(false);
-            }
-        }
-    }, []); // <-- Dependency array kosong berarti hanya berjalan sekali saat mount
 
     // Efek untuk navigasi saat mode di-toggle (TETAP SAMA)
     useEffect(() => {
@@ -78,14 +89,28 @@ export default function AuthenticatedLayout({ header, children }) {
                 isSidebarOpen={isSidebarOpen}
                 toggleSidebar={toggleSidebar}
                 isCmsMode={isCmsMode}
+                onLogout={handleLogout}
             />
 
-            <div className={`transition-all duration-300 ease-in-out ${isSidebarOpen ? 'ml-64' : 'ml-20'}`}>
+            {/* Overlay Gelap untuk Mobile */}
+            {/* Muncul saat sidebar terbuka DAN layar BUKAN desktop */}
+            {isSidebarOpen && !isDesktop() && (
+                <div
+                    onClick={toggleSidebar}
+                    className="fixed inset-0 bg-black bg-opacity-50 z-20 lg:hidden"
+                    aria-hidden="true"
+                ></div>
+            )}
+
+            {/* Konten utama tidak lagi diberi margin di mobile */}
+            {/* Margin hanya berlaku di layar besar (lg) */}
+            <div className={`transition-all duration-300 ease-in-out ${isSidebarOpen ? 'lg:ml-64' : 'lg:ml-20'}`}>
                 <Header
                     user={user}
                     pageHeader={header}
                     isCmsMode={isCmsMode}
                     toggleCmsMode={toggleCmsMode}
+                    toggleSidebar={toggleSidebar} // <-- Prop ini diteruskan ke Header
                 />
 
                 <main className="flex-1 overflow-y-auto p-4 sm:p-6 lg:p-8">

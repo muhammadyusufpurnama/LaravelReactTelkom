@@ -1,8 +1,9 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Link } from '@inertiajs/react';
+import { Link, router } from '@inertiajs/react';
 import { MdDashboard, MdAssessment, MdKeyboardArrowDown, MdWifiTethering } from 'react-icons/md';
 import { FiUsers, FiChevronLeft, FiChevronRight, FiUser, FiLogOut, FiX } from 'react-icons/fi';
 import GoogleDriveUploader from '@/Components/GoogleDriveUploader';
+import { MdExitToApp } from 'react-icons/md';
 
 // Komponen-komponen kecil (Helper components)
 const Logo = ({ isSidebarOpen }) => (
@@ -60,7 +61,7 @@ const Modal = ({ show, onClose, children }) => {
 
 
 // MODIFIKASI UTAMA DI SINI
-const UserProfile = ({ user, isSidebarOpen }) => {
+const UserProfile = ({ user, isSidebarOpen, onLogout }) => {
     const [isProfileOpen, setIsProfileOpen] = useState(false);
     const [isToolOpen, setIsToolOpen] = useState(false); // State terpisah untuk modal
     const profileRef = useRef(null);
@@ -124,9 +125,13 @@ const UserProfile = ({ user, isSidebarOpen }) => {
                             <Link href={route('profile.edit')} className="flex items-center w-full px-4 py-2 text-sm text-gray-700 hover:bg-gray-100" onClick={() => setIsProfileOpen(false)}>
                                 <FiUser className="mr-3" />Edit Profile
                             </Link>
-                            <Link href={route('logout')} method="post" as="button" className="flex items-center w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-red-50">
-                                <FiLogOut className="mr-3" />Log Out
-                            </Link>
+                            <button
+                                onClick={onLogout}
+                                className="w-full flex items-center space-x-3 px-4 py-2 text-sm text-red-700 hover:bg-red-100"
+                            >
+                                <MdExitToApp className="text-red-500" />
+                                <span>Logout</span>
+                            </button>
                         </div>
                     </div>
                 )}
@@ -155,7 +160,7 @@ const UserProfile = ({ user, isSidebarOpen }) => {
 
 
 // Komponen Sidebar utama (logika menu tidak berubah)
-export default function Sidebar({ user, isSidebarOpen, toggleSidebar, isCmsMode }) {
+export default function Sidebar({ user, isSidebarOpen, toggleSidebar, isCmsMode, onLogout }) {
     const [isDashboardOpen, setIsDashboardOpen] = useState(false);
     const [isReportsOpen, setIsReportsOpen] = useState(false);
     const [isDigitalProductOpen, setIsDigitalProductOpen] = useState(false);
@@ -177,8 +182,13 @@ export default function Sidebar({ user, isSidebarOpen, toggleSidebar, isCmsMode 
     }, [isSidebarOpen]);
 
     return (
-        <div className={`flex flex-col bg-white h-screen fixed shadow-lg z-30 transition-all duration-300 ease-in-out ${isSidebarOpen ? 'w-64' : 'w-20'}`}>
-            <button onClick={toggleSidebar} className="absolute -right-3 top-6 z-40 bg-white p-1 rounded-full shadow-md border hover:bg-gray-100 transition-colors">
+        <div className={`flex flex-col bg-white h-screen fixed shadow-lg z-30 transition-transform duration-300 ease-in-out
+            ${isSidebarOpen ? 'translate-x-0 lg:w-64' : '-translate-x-full lg:translate-x-0 lg:w-20'}`}
+        >
+            <button
+                onClick={toggleSidebar}
+                className="hidden lg:block absolute -right-3 top-6 z-40 bg-white p-1 rounded-full shadow-md border hover:bg-gray-100 transition-colors"
+            >
                 {isSidebarOpen ? <FiChevronLeft size={16} /> : <FiChevronRight size={16} />}
             </button>
 
@@ -270,7 +280,7 @@ export default function Sidebar({ user, isSidebarOpen, toggleSidebar, isCmsMode 
                 )}
             </nav>
 
-            <UserProfile user={user} isSidebarOpen={isSidebarOpen} />
+            <UserProfile user={user} isSidebarOpen={isSidebarOpen} onLogout={onLogout} />
         </div>
     );
 }
