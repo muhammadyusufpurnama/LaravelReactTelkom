@@ -102,7 +102,7 @@ export default function MergeExcel({ auth, lastMergeResult }) {
                                             <p className="text-blue-600 mt-1">File: {displayedMergeResult.file_name}</p>
                                         </div>
                                         <button onClick={handleDownload} className="px-6 py-3 bg-green-600 hover:bg-green-700 text-white font-semibold rounded-lg">
-                                            📥 Download File
+                                            Download File
                                         </button>
                                     </div>
                                 </div>

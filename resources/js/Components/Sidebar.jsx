@@ -108,7 +108,7 @@ const UserProfile = ({ user, isSidebarOpen }) => {
                                 </button>
                             )}
 
-                            {user.role === 'superadmin' && ( // Atau sesuaikan dengan role yang diizinkan
+                            {(user.role === 'superadmin' || user.role === 'admin') && ( // Atau sesuaikan dengan role yang diizinkan
                                 <Link
                                     href={route('admin.merge-excel.create')}
                                     className="flex items-center w-full px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"

@@ -17,14 +17,17 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      # Langkah 2: Menyiapkan lingkungan PHP
+      # 2. Setup PHP dengan versi yang sesuai
       - name: Setup PHP
         uses: shivammathur/setup-php@v2
         with:
-          php-version: "8.2" # Pastikan versi ini sama dengan di server Anda
-          extensions: mbstring, xml, ctype, json, tokenizer, pdo, pdo_mysql
-          tools: composer:v2
+          php-version: "8.2"
+          extensions: mbstring, dom, fileinfo, mysql
           coverage: none
+          tools: composer
+
+      - name: Install Composer Dependencies
+        run: composer install --no-interaction --prefer-dist --no-dev --optimize-autoloader
 
       # Langkah 3: Menyiapkan lingkungan Node.js untuk React
       - name: Setup Node.js
