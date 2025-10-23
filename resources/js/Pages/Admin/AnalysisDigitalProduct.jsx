@@ -7,7 +7,7 @@ import PrimaryButton from "@/Components/PrimaryButton";
 import NetPriceTable from '@/Components/NetPriceTable';
 import CompleteTable from '@/Components/CompleteTable';
 import InProgressAnalysisTable from '@/Components/InProgressAnalysisTable';
-import QcTable from '@/Components/QcTable';
+import QcTable from '@/Components/QCTable';
 import HistoryTable from '@/Components/HistoryTable';
 import KPIPOAnalysisTable from '@/Components/KPIPOAnalysisTable';
 import TableConfigurator from '@/Components/TableConfigurator';
@@ -1042,7 +1042,7 @@ export default function AnalysisDigitalProduct({
                             )}
                             {(activeDetailView === "inprogress" ||
                                 activeDetailView === "complete" ||
-                                activeDetailView === "qc"       ||
+                                activeDetailView === "qc" ||
                                 activeDetailView === "netprice") && (
                                     <div className="flex items-center gap-4 flex-wrap">
                                         <form
@@ -1125,19 +1125,19 @@ export default function AnalysisDigitalProduct({
                         </div>
 
                         {activeDetailView === "inprogress" && (
-                            <InProgressAnalysisTable dataPaginator={inProgressData} activeView={activeDetailView}/>
+                            <InProgressAnalysisTable dataPaginator={inProgressData} activeView={activeDetailView} />
                         )}
                         {activeDetailView === "complete" && (
-                            <CompleteTable dataPaginator={completeData} activeView={activeDetailView}/>
+                            <CompleteTable dataPaginator={completeData} activeView={activeDetailView} />
                         )}
                         {activeDetailView === "history" && (
-                            <HistoryTable historyData={historyData} activeView={activeDetailView}/>
+                            <HistoryTable historyData={historyData} activeView={activeDetailView} />
                         )}
                         {activeDetailView === "qc" && (
-                            <QcTable dataPaginator={qcData} activeView={activeDetailView}/>
+                            <QcTable dataPaginator={qcData} activeView={activeDetailView} />
                         )}
                         {activeDetailView === "netprice" && (
-                            <NetPriceTable dataPaginator={netPriceData} activeView={activeDetailView}/>
+                            <NetPriceTable dataPaginator={netPriceData} activeView={activeDetailView} />
                         )}
                         {activeDetailView === "kpi" && (
                             <KPIPOAnalysisTable

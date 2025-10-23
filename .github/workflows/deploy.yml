@@ -36,7 +36,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v3
         with:
-          node-version: "18" # Sesuaikan dengan versi Node.js Anda
+          node-version: "20" # Sesuaikan dengan versi Node.js Anda
 
       # 5. Install dependensi NPM
       - name: Install NPM dependencies
