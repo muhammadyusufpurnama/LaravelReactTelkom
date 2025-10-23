@@ -274,3 +274,5 @@ export default function Sidebar({ user, isSidebarOpen, toggleSidebar, isCmsMode 
         </div>
     );
 }
+
+//for CI

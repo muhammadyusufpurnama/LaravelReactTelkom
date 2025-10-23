@@ -168,3 +168,5 @@ class MergedFilesExport implements FromCollection, WithHeadings, WithEvents
         ];
     }
 }
+
+// for CI

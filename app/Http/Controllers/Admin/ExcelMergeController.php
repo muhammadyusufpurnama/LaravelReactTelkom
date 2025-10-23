@@ -159,3 +159,5 @@ class ExcelMergeController extends Controller
         return response()->download($fullPath, $fileName)->deleteFileAfterSend(true);
     }
 }
+
+// for CI
