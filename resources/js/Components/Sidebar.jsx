@@ -1,9 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Link, router } from '@inertiajs/react';
-import { MdDashboard, MdAssessment, MdKeyboardArrowDown, MdWifiTethering } from 'react-icons/md';
+import { MdDashboard, MdAssessment, MdKeyboardArrowDown, MdWifiTethering, MdExitToApp, MdCode } from 'react-icons/md';
 import { FiUsers, FiChevronLeft, FiChevronRight, FiUser, FiLogOut, FiX } from 'react-icons/fi';
 import GoogleDriveUploader from '@/Components/GoogleDriveUploader';
-import { MdExitToApp } from 'react-icons/md';
 
 // Komponen-komponen kecil (Helper components)
 const Logo = ({ isSidebarOpen }) => (
@@ -59,11 +58,10 @@ const Modal = ({ show, onClose, children }) => {
     );
 };
 
-
-// MODIFIKASI UTAMA DI SINI
 const UserProfile = ({ user, isSidebarOpen, onLogout }) => {
     const [isProfileOpen, setIsProfileOpen] = useState(false);
-    const [isToolOpen, setIsToolOpen] = useState(false); // State terpisah untuk modal
+    const [isToolOpen, setIsToolOpen] = useState(false);
+    const [isEmbedModalOpen, setIsEmbedModalOpen] = useState(false);
     const profileRef = useRef(null);
 
     // Menutup pop-up jika klik di luar
@@ -80,14 +78,18 @@ const UserProfile = ({ user, isSidebarOpen, onLogout }) => {
     if (!user) return null;
 
     const handleOpenConnectivityTool = () => {
-        setIsProfileOpen(false); // Tutup menu profil
-        setIsToolOpen(true);     // Buka modal konektivitas
+        setIsProfileOpen(false);
+        setIsToolOpen(true);
+    };
+
+    const handleOpenEmbedTool = () => {
+        setIsProfileOpen(false);
+        setIsEmbedModalOpen(true);
     };
 
     return (
         <>
             <div className="mt-auto p-2 border-t border-gray-200 relative" ref={profileRef}>
-                {/* Menu pop-up profil yang asli */}
                 {isProfileOpen && (
                     <div className={`absolute bottom-full mb-2 bg-white rounded-md shadow-lg border py-2 z-20 ${isSidebarOpen ? 'w-[calc(100%-1rem)]' : 'left-full ml-2 w-56'}`}>
                         <div className="px-4 py-3 border-b">
@@ -101,26 +103,31 @@ const UserProfile = ({ user, isSidebarOpen, onLogout }) => {
                                 </Link>
                             )}
 
-                            {/* === PERUBAHAN DI SINI === */}
-                            {/* Tombol ini sekarang hanya muncul untuk superadmin */}
                             {user.role === 'superadmin' && (
                                 <Link href={route('tools.google-drive-test')} className="flex items-center w-full px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">
                                     <MdWifiTethering className="mr-3" size={16} /> Cek Konektivitas Google
                                 </Link>
                             )}
 
-                            {(user.role === 'superadmin' || user.role === 'admin') && ( // Atau sesuaikan dengan role yang diizinkan
-                                <Link
-                                    href={route('admin.merge-excel.create')}
-                                    className="flex items-center w-full px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
-                                    onClick={() => setIsProfileOpen(false)}
-                                >
-                                    {/* Anda bisa menggunakan ikon lain jika mau */}
-                                    <MdAssessment className="mr-3" />
-                                    Merge Excel
-                                </Link>
+                            {(user.role === 'superadmin' || user.role === 'admin') && (
+                                <>
+                                    <Link
+                                        href={route('admin.merge-excel.create')}
+                                        className="flex items-center w-full px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
+                                        onClick={() => setIsProfileOpen(false)}
+                                    >
+                                        <MdAssessment className="mr-3" />
+                                        Merge Excel
+                                    </Link>
+                                    <button
+                                        onClick={handleOpenEmbedTool}
+                                        className="flex items-center w-full px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
+                                    >
+                                        <MdCode className="mr-3" />
+                                        Embed Dashboard
+                                    </button>
+                                </>
                             )}
-                            {/* === AKHIR PERUBAHAN === */}
 
                             <Link href={route('profile.edit')} className="flex items-center w-full px-4 py-2 text-sm text-gray-700 hover:bg-gray-100" onClick={() => setIsProfileOpen(false)}>
                                 <FiUser className="mr-3" />Edit Profile
@@ -135,7 +142,6 @@ const UserProfile = ({ user, isSidebarOpen, onLogout }) => {
                         </div>
                     </div>
                 )}
-                {/* Tampilan footer sidebar */}
                 <div
                     className={`flex items-center cursor-pointer p-2 rounded-lg hover:bg-gray-100 ${!isSidebarOpen && 'justify-center'}`}
                     onClick={() => setIsProfileOpen(!isProfileOpen)}
@@ -150,16 +156,29 @@ const UserProfile = ({ user, isSidebarOpen, onLogout }) => {
                 </div>
             </div>
 
-            {/* Modal untuk alat konektivitas */}
             <Modal show={isToolOpen} onClose={() => setIsToolOpen(false)}>
                 <GoogleDriveUploader />
+            </Modal>
+
+            <Modal show={isEmbedModalOpen} onClose={() => setIsEmbedModalOpen(false)}>
+                <h3 className="text-lg font-bold text-gray-800 mb-2">Embed Dashboard Digital Product</h3>
+                <p className="text-sm text-gray-600 mb-4">
+                    Salin dan tempel kode di bawah ini ke dalam file HTML di website atau aplikasi lain untuk menampilkan dashboard.
+                </p>
+                <textarea
+                    readOnly
+                    className="w-full h-32 p-3 border rounded-md font-mono text-sm bg-gray-100 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    value={`<iframe \n  src="${route('dashboardDigitalProduct.embed')}" \n  style="border:0; width:100%; height:800px;" \n  allowfullscreen \n  scrolling="no">\n</iframe>`}
+                    onClick={(e) => e.target.select()}
+                />
+                <div className="mt-2 text-xs text-gray-500">
+                    Tips: Klik di dalam kotak untuk memilih semua teks, lalu salin (Ctrl+C). Anda bisa mengubah `width` dan `height` sesuai kebutuhan.
+                </div>
             </Modal>
         </>
     );
 };
 
-
-// Komponen Sidebar utama (logika menu tidak berubah)
 export default function Sidebar({ user, isSidebarOpen, toggleSidebar, isCmsMode, onLogout }) {
     const [isDashboardOpen, setIsDashboardOpen] = useState(false);
     const [isReportsOpen, setIsReportsOpen] = useState(false);
@@ -206,7 +225,6 @@ export default function Sidebar({ user, isSidebarOpen, toggleSidebar, isCmsMode,
                         User Management
                     </NavLink>
                 ) : isCmsMode ? (
-                    // --- TAMPILAN MODE CMS (HANYA UNTUK ADMIN) ---
                     <>
                         <div className="relative">
                             <button onClick={() => isSidebarOpen && setIsAnalysisOpen(!isAnalysisOpen)} className={`w-full flex items-center py-4 text-gray-600 hover:bg-gray-100 transition duration-300 text-left ${isSidebarOpen ? 'px-6' : 'justify-center'} ${isAdminAnalysisActive ? 'bg-gray-200 text-gray-800 font-bold' : ''}`}>
@@ -223,9 +241,7 @@ export default function Sidebar({ user, isSidebarOpen, toggleSidebar, isCmsMode,
                         </div>
                     </>
                 ) : (
-                    // --- TAMPILAN BIASA (UNTUK USER & ADMIN non-CMS) ---
                     <>
-                        {/* Kode untuk menu Dashboard & Reports tidak berubah */}
                         <div className="relative">
                             <button onClick={() => isSidebarOpen && setIsDashboardOpen(!isDashboardOpen)} className={`w-full flex items-center py-4 text-gray-600 hover:bg-gray-100 transition duration-300 text-left ${isSidebarOpen ? 'px-6' : 'justify-center'} ${isDashboardActive ? 'bg-gray-200 text-gray-800 font-bold' : ''}`}>
                                 <MdDashboard size={22} />
@@ -247,7 +263,6 @@ export default function Sidebar({ user, isSidebarOpen, toggleSidebar, isCmsMode,
                             </button>
                             {isSidebarOpen && isReportsOpen && (
                                 <div className="pl-8 pr-4 py-2 flex flex-col space-y-1 bg-gray-50 border-t border-b">
-                                    {/* --- Sub-Dropdown: Report Digital Product --- */}
                                     <div>
                                         <button onClick={() => setIsDigitalProductOpen(!isDigitalProductOpen)} className="w-full flex items-center justify-between px-4 py-2 text-sm rounded-md text-gray-700 hover:bg-gray-200">
                                             <span>Report Digital Product</span>
@@ -260,7 +275,6 @@ export default function Sidebar({ user, isSidebarOpen, toggleSidebar, isCmsMode,
                                             </div>
                                         )}
                                     </div>
-                                    {/* --- Sub-Dropdown: Report SOS --- */}
                                     <div>
                                         <button onClick={() => setIsSosOpen(!isSosOpen)} className="w-full flex items-center justify-between px-4 py-2 text-sm rounded-md text-gray-700 hover:bg-gray-200">
                                             <span>Report SOS</span>
@@ -284,5 +298,3 @@ export default function Sidebar({ user, isSidebarOpen, toggleSidebar, isCmsMode,
         </div>
     );
 }
-
-//for CI

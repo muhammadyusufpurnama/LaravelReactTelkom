@@ -22,9 +22,11 @@ const StatusBadge = ({ text, color }) => (
 );
 
 export default function DashboardDigitalProduct({
-    auth, revenueBySubTypeData, amountBySubTypeData, dataPreview, sessionBySubType, productRadarData, witelPieData, filters = {}, filterOptions = {}
+    auth, revenueBySubTypeData, amountBySubTypeData, dataPreview, sessionBySubType, productRadarData, witelPieData, filters = {}, filterOptions = {},
+    // 1. Terima prop isEmbed dari controller, dengan nilai default false
+    isEmbed = false
 }) {
-    // --- STATE MANAGEMENT ---
+    // --- STATE MANAGEMENT & HOOKS --- (Tidak ada perubahan di sini)
     const productOptions = useMemo(() => filterOptions.products || [], [filterOptions.products]);
     const witelOptions = useMemo(() => filterOptions.witelList || [], [filterOptions.witelList]);
     const subTypeOptions = useMemo(() => filterOptions.subTypes || [], [filterOptions.subTypes]);
@@ -46,13 +48,10 @@ export default function DashboardDigitalProduct({
             witels: filters.witels && Array.isArray(filters.witels) ? filters.witels : witelOptions,
             subTypes: filters.subTypes && Array.isArray(filters.subTypes) ? filters.subTypes : subTypeOptions,
             branches: filters.branches && Array.isArray(filters.branches) ? filters.branches : branchOptions,
-
-            // Logika ini sekarang akan selalu menerima tanggal dari 'filters'
             startDate: filters.startDate ? new Date(`${filters.startDate}T00:00:00`) : null,
             endDate: filters.endDate ? new Date(`${filters.endDate}T00:00:00`) : null,
         });
 
-        // Bagian ini tetap sama
         setRevenueFilters({ products: productOptions });
         setAmountFilters({ products: productOptions });
         setRadarFilters({ products: productOptions, witels: witelOptions });
@@ -60,13 +59,11 @@ export default function DashboardDigitalProduct({
 
     }, [filters, productOptions, witelOptions, subTypeOptions, branchOptions]);
 
-    // --- FUNGSI HANDLER ---
 
-    // [MODIFIKASI 1] Buat fungsi helper untuk format tanggal yang aman dari timezone
+    // --- FUNGSI HANDLER --- (Tidak ada perubahan di sini)
     const formatDateForQuery = (date) => {
         if (!date) return undefined;
         const year = date.getFullYear();
-        // getMonth() dimulai dari 0 (Januari), jadi perlu +1
         const month = (date.getMonth() + 1).toString().padStart(2, '0');
         const day = date.getDate().toString().padStart(2, '0');
         return `${year}-${month}-${day}`;
@@ -74,44 +71,28 @@ export default function DashboardDigitalProduct({
 
     const applyFilters = () => {
         const queryParams = {
-            // [MODIFIKASI UTAMA]
-            // Kirim array langsung. Inertia akan otomatis mengubahnya menjadi format `nama[]=nilai`.
-            // Jika semua item terpilih (panjang array sama dengan opsi), kirim `undefined`
-            // agar parameter tidak ditambahkan ke URL (artinya "tampilkan semua").
-
-            products: localFilters.products.length > 0 && localFilters.products.length < productOptions.length
-                ? localFilters.products
-                : undefined,
-
-            witels: localFilters.witels.length > 0 && localFilters.witels.length < witelOptions.length
-                ? localFilters.witels
-                : undefined,
-
-            subTypes: localFilters.subTypes.length > 0 && localFilters.subTypes.length < subTypeOptions.length
-                ? localFilters.subTypes
-                : undefined,
-
-            branches: localFilters.branches.length > 0 && localFilters.branches.length < branchOptions.length
-                ? localFilters.branches
-                : undefined,
-
+            products: localFilters.products.length > 0 && localFilters.products.length < productOptions.length ? localFilters.products : undefined,
+            witels: localFilters.witels.length > 0 && localFilters.witels.length < witelOptions.length ? localFilters.witels : undefined,
+            subTypes: localFilters.subTypes.length > 0 && localFilters.subTypes.length < subTypeOptions.length ? localFilters.subTypes : undefined,
+            branches: localFilters.branches.length > 0 && localFilters.branches.length < branchOptions.length ? localFilters.branches : undefined,
             startDate: formatDateForQuery(localFilters.startDate),
             endDate: formatDateForQuery(localFilters.endDate),
         };
-
-        // Inertia akan mengonversi objek ini ke query string yang benar
-        // contoh: ?products[]=Netmonk&products[]=OCA&witels[]=BALI
-        router.get(route('dashboardDigitalProduct'), queryParams, {
-            replace: true,
-            preserveState: true,
-            preserveScroll: true
-        });
+        const targetRoute = isEmbed ? route('dashboardDigitalProduct.embed') : route('dashboardDigitalProduct');
+        router.get(targetRoute, queryParams, { replace: true, preserveState: true, preserveScroll: true });
     };
 
-    const resetFilters = () => router.get(route('dashboardDigitalProduct'), {}, { preserveScroll: true });
-    const handleLimitChange = (value) => router.get(route('dashboardDigitalProduct'), { ...filters, limit: value }, { preserveScroll: true, replace: true });
+    const resetFilters = () => {
+        const targetRoute = isEmbed ? route('dashboardDigitalProduct.embed') : route('dashboardDigitalProduct');
+        router.get(targetRoute, {}, { preserveScroll: true });
+    }
+    const handleLimitChange = (value) => {
+        const targetRoute = isEmbed ? route('dashboardDigitalProduct.embed') : route('dashboardDigitalProduct');
+        router.get(targetRoute, { ...filters, limit: value }, { preserveScroll: true, replace: true });
+    }
 
-    // --- LOGIKA FILTERING DATA --- (Tidak Berubah)
+
+    // --- LOGIKA FILTERING DATA --- (Tidak ada perubahan di sini)
     const filteredRevenueData = useMemo(() => revenueBySubTypeData?.filter(item => revenueFilters.products.includes(item.product)) || [], [revenueBySubTypeData, revenueFilters]);
     const filteredAmountData = useMemo(() => amountBySubTypeData?.filter(item => amountFilters.products.includes(item.product)) || [], [amountBySubTypeData, amountFilters]);
     const transformedRadarData = useMemo(() => {
@@ -125,16 +106,14 @@ export default function DashboardDigitalProduct({
     const filteredWitelPieData = useMemo(() => witelPieData?.filter(item => pieFilters.witels.includes(item.nama_witel)) || [], [witelPieData, pieFilters]);
 
 
-    // --- RENDER KOMPONEN UI ---
-    return (
-        <AuthenticatedLayout header="Dashboard Digital Product">
-            <Head title="Dashboard Digital Product" />
-
+    // 2. Ekstrak konten utama dashboard ke dalam sebuah variabel/konstanta.
+    // Ini membuat kode lebih bersih (DRY - Don't Repeat Yourself).
+    const DashboardContent = (
+        <>
             {/* Panel Filter Global */}
             <div className="bg-white p-4 rounded-lg shadow-md mb-6">
-                <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-6 gap-4 items-end">
-                    {/* ... (Filter DropdownCheckbox lainnya tetap sama) ... */}
-                    <div className="col-span-1 md:col-span-2">
+                <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-4 items-end">
+                    <div>
                         <label className="block text-sm font-medium text-gray-700 mb-1">Rentang Tanggal</label>
                         <DatePicker selectsRange startDate={localFilters.startDate} endDate={localFilters.endDate} onChange={(update) => setLocalFilters(prev => ({ ...prev, startDate: update[0], endDate: update[1] }))} isClearable={true} dateFormat="dd/MM/yyyy" className="w-full border-gray-300 rounded-md shadow-sm" />
                     </div>
@@ -161,7 +140,7 @@ export default function DashboardDigitalProduct({
                 </div>
             </div>
 
-            {/* ... Sisa dari komponen (Grid Chart dan Tabel) tidak berubah ... */}
+            {/* Grid Chart */}
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                 <div className="bg-white p-6 rounded-lg shadow-md flex flex-col">
                     <h3 className="font-semibold text-lg text-gray-800">Revenue by Sub-type</h3>
@@ -193,6 +172,7 @@ export default function DashboardDigitalProduct({
                 </div>
             </div>
 
+            {/* Tabel Data Preview */}
             <div className="bg-white p-6 rounded-lg shadow-md mt-6">
                 <div className="flex justify-between items-center mb-4">
                     <h3 className="font-semibold text-lg text-gray-800">Data Preview</h3>
@@ -238,6 +218,33 @@ export default function DashboardDigitalProduct({
                     </div>
                 )}
             </div>
+        </>
+    );
+
+    // 3. Render secara kondisional.
+    // Jika isEmbed true, hanya render kontennya di dalam div sederhana.
+    // Jika false, bungkus konten dengan AuthenticatedLayout dan Head.
+    if (isEmbed) {
+        return (
+            <div className="p-4 sm:p-6 bg-gray-100 font-sans">
+                {DashboardContent}
+            </div>
+        );
+    }
+
+    return (
+        <AuthenticatedLayout
+            user={auth.user} // 'auth' sudah di-pass ke komponen, bisa di-pass ke layout
+            header={<h2 className="font-semibold text-xl text-gray-800 leading-tight">Dashboard Digital Product</h2>}
+        >
+            <Head title="Dashboard Digital Product" />
+
+            <div className="py-8">
+                <div className="max-w-7xl mx-auto sm:px-6 lg:px-8">
+                    {DashboardContent}
+                </div>
+            </div>
+
         </AuthenticatedLayout>
     );
 }

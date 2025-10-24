@@ -30,9 +30,7 @@ Route::get('/google-drive-test', function () {
     return Inertia::render('Upload');
 })->name('google.drive.test');
 
-Route::get('/cek-php', function () {
-    phpinfo();
-});
+Route::get('/embed/dashboardDigitalProduct', [DashboardDigitalProductController::class, 'embed'])->name('dashboardDigitalProduct.embed');
 
 // --- RUTE YANG MEMERLUKAN AUTENTIKASI ---
 Route::middleware(['auth', 'verified'])->group(function () {
