@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState, useCallback } from "react";
+import React, { useEffect, useMemo, useState, useRef } from "react";
 import AuthenticatedLayout from "@/Layouts/AuthenticatedLayout";
 import { Head, useForm, usePage, router, Link } from "@inertiajs/react";
 import InputLabel from "@/Components/InputLabel";
@@ -139,14 +139,9 @@ const DetailsCard = ({ totals, segment, period }) => (
 
 const ProgressBar = ({ progress, text }) => (
     <div className="mt-4">
-        <p className="text-sm font-semibold text-gray-700 mb-1">
-            {text} {progress}%
-        </p>
+        <p className="text-sm font-semibold text-gray-700 mb-1">{text} {progress}%</p>
         <div className="w-full bg-gray-200 rounded-full">
-            <div
-                className="bg-blue-600 text-xs font-medium text-blue-100 text-center p-0.5 leading-none rounded-full transition-all duration-300"
-                style={{ width: `${progress}%` }}
-            ></div>
+            <div className="bg-blue-600 text-xs font-medium text-blue-100 text-center p-0.5 leading-none rounded-full transition-all duration-300" style={{ width: `${progress}%` }}></div>
         </div>
     </div>
 );
@@ -436,6 +431,40 @@ const CustomTargetForm = ({
     );
 };
 
+const handleCancelUpload = async () => {
+    const batchId = sessionStorage.getItem('active_batch_id');
+    if (!batchId) {
+        toast.error("Tidak ada proses yang sedang berjalan.");
+        return;
+    }
+
+    const result = await MySwal.fire({
+        title: 'Anda Yakin?',
+        text: "Anda akan membatalkan proses unggah dan olah data ini.",
+        icon: 'warning',
+        showCancelButton: true,
+        confirmButtonColor: '#d33',
+        cancelButtonColor: '#3085d6',
+        confirmButtonText: 'Ya, Batalkan!',
+        cancelButtonText: 'Lanjutkan Proses'
+    });
+
+    if (result.isConfirmed) {
+        router.post(route('admin.analysisDigitalProduct.import.cancel'), { batch_id: batchId }, {
+            onSuccess: () => {
+                // Hentikan interval dan bersihkan session dari sisi frontend
+                if (window.jobInterval) {
+                    clearInterval(window.jobInterval);
+                    window.jobInterval = null;
+                }
+                setProgressStates({ upload: null, mentah: null, complete: null, cancel: null });
+                sessionStorage.removeItem('active_batch_id');
+                sessionStorage.removeItem('active_job_type');
+            }
+        });
+    }
+};
+
 // ===================================================================
 // Main Page Component
 // ===================================================================
@@ -463,6 +492,17 @@ export default function AnalysisDigitalProduct({
     const { props } = usePage();
     const { filters } = props;
 
+    const [progressStates, setProgressStates] = useState({
+        upload: null,
+        mentah: null,
+        complete: null,
+        cancel: null,
+    });
+    const [isPaused, setIsPaused] = useState(false);
+    const [timeRemaining, setTimeRemaining] = useState(null);
+    const startTimeRef = useRef(null);
+    const isProcessingMentah = progressStates.mentah !== null && progressStates.mentah < 100;
+
     const activeDetailView = filters.tab || 'inprogress';
 
     // const [localFilters, setLocalFilters] = useState({
@@ -471,8 +511,12 @@ export default function AnalysisDigitalProduct({
     // });
 
     useEffect(() => {
-        if (flash.success) toast.success(flash.success);
-        if (flash.error) toast.error(flash.error);
+        if (flash.success) {
+            toast.success(flash.success);
+        }
+        if (flash.error) {
+            toast.error(flash.error);
+        }
     }, [flash]);
 
     // useEffect(() => {
@@ -501,44 +545,25 @@ export default function AnalysisDigitalProduct({
 
     // }, [localFilters]);
 
-    useEffect(() => {
-        if (flash.success) {
-            toast.success(flash.success);
-        }
-        if (flash.error) {
-            toast.error(flash.error);
-        }
-    }, [flash]);
-
     const [tableConfig, setTableConfig] = useState(
         currentSegment === 'SME' ? smeTableConfigTemplate : legsTableConfigTemplate
     );
 
-    // useEffect untuk SINKRONISASI state dengan props dari server dan localStorage
     useEffect(() => {
-        const storageKey = `userTableConfig_${currentSegment}`;
         const defaultConfig = currentSegment === 'SME' ? smeTableConfigTemplate : legsTableConfigTemplate;
 
-        // [LOGIKA UTAMA] Jika server mengirimkan konfigurasi, maka itu adalah sumber kebenaran.
+        // LOGIKA 1: Jika server mengirimkan konfigurasi yang valid...
         if (savedTableConfig && Array.isArray(savedTableConfig) && savedTableConfig.length > 0) {
-            console.log(`[SYNC] Menggunakan konfigurasi dari database untuk segmen: ${currentSegment}`);
+            // ...maka gunakan konfigurasi dari server.
             setTableConfig(savedTableConfig);
-
-            // Selalu sinkronkan localStorage dengan data terbaru dari server
-            localStorage.setItem(storageKey, JSON.stringify(savedTableConfig));
         }
-        // [LOGIKA FALLBACK] Jika server TIDAK mengirimkan konfigurasi (setelah reset atau saat pertama kali),
-        // maka kita WAJIB menggunakan template default.
+        // LOGIKA 2: Jika tidak ada konfigurasi dari server (setelah reset atau saat pertama kali)...
         else {
-            console.log(`[SYNC] Menggunakan konfigurasi default untuk segmen: ${currentSegment}`);
+            // ...maka paksa state untuk kembali ke template default.
             setTableConfig(defaultConfig);
-
-            // [PENTING] Hapus kunci localStorage yang lama untuk mencegah masalah ini terjadi lagi.
-            localStorage.removeItem(storageKey);
         }
 
-        // Dependency array ini sudah benar, jangan diubah.
-    }, [currentSegment, savedTableConfig]);  // <-- KUNCI UTAMA: Jalankan efek ini setiap kali segmen atau data dari server berubah
+    }, [savedTableConfig, currentSegment]); // <-- Dependensi yang benar
 
     // useEffect untuk MENYIMPAN perubahan lokal ke localStorage (TETAP DIPERLUKAN)
     useEffect(() => {
@@ -556,29 +581,10 @@ export default function AnalysisDigitalProduct({
 
     const handleSaveConfig = () => {
         const pageName = `analysis_digital_${currentSegment.toLowerCase()}`;
-
         router.post(
             route("admin.analysisDigitalProduct.saveConfig"),
-            {
-                configuration: tableConfig,
-                page_name: pageName,
-            },
-            {
-                preserveScroll: true,
-                // TAMBAHKAN KODE DI BAWAH INI
-                onSuccess: () => {
-                    console.log("SUCCESS: Server merespons dengan sukses.");
-                    toast.success("Tampilan tabel berhasil disimpan!");
-                    localStorage.removeItem(
-                        `userTableConfig_${currentSegment}`,
-                    );
-                },
-                onError: (errors) => {
-                    console.error("ERROR: Server mengembalikan error.", errors);
-                    toast.error("Gagal menyimpan. Cek konsol untuk detail.");
-                },
-                // SAMPAI SINI
-            },
+            { configuration: tableConfig, page_name: pageName },
+            { preserveScroll: true }
         );
     };
 
@@ -595,105 +601,141 @@ export default function AnalysisDigitalProduct({
     ];
 
     const handleExportReport = () => {
+        // 1. Dapatkan CSRF token dari meta tag
+        const csrfMeta = document.querySelector('meta[name="csrf-token"]');
+
+        // 2. Lakukan validasi
+        if (!csrfMeta) {
+            toast.error("CSRF Token tidak ditemukan. Pastikan ada meta tag 'csrf-token' di layout utama Anda.");
+            console.error("CSRF token meta tag not found.");
+            return; // Hentikan eksekusi jika token tidak ada
+        }
+        const csrfToken = csrfMeta.getAttribute("content");
+
+        // 3. Buat form dinamis seperti sebelumnya
         const form = document.createElement("form");
         form.method = "POST";
         form.action = route("admin.analysisDigitalProduct.export.report");
-        form.style.display = "none";
+        form.style.display = "none"; // Sembunyikan form
 
-        const csrfToken = document
-            .querySelector('meta[name="csrf-token"]')
-            .getAttribute("content");
+        // 4. Buat dan tambahkan input untuk setiap data yang akan dikirim
+
+        // Input untuk CSRF Token (WAJIB)
         const csrfInput = document.createElement("input");
         csrfInput.type = "hidden";
         csrfInput.name = "_token";
         csrfInput.value = csrfToken;
         form.appendChild(csrfInput);
 
+        // Input untuk segment
         const segmentInput = document.createElement("input");
         segmentInput.type = "hidden";
         segmentInput.name = "segment";
         segmentInput.value = currentSegment;
         form.appendChild(segmentInput);
 
+        // Input untuk period
         const periodInput = document.createElement("input");
         periodInput.type = "hidden";
         periodInput.name = "period";
         periodInput.value = period;
         form.appendChild(periodInput);
 
+        // Input untuk details (JSON string)
         const detailsInput = document.createElement("input");
         detailsInput.type = "hidden";
         detailsInput.name = "details";
         detailsInput.value = JSON.stringify(detailsTotals);
         form.appendChild(detailsInput);
 
+        // Input untuk table_config (JSON string)
         const configInput = document.createElement("input");
         configInput.type = "hidden";
         configInput.name = "table_config";
         configInput.value = JSON.stringify(tableConfig);
         form.appendChild(configInput);
 
+        // 5. Tambahkan form ke body, submit, lalu hapus
         document.body.appendChild(form);
         form.submit();
         document.body.removeChild(form);
     };
 
-    const [progressStates, setProgressStates] = useState({
-        upload: null,
-        mentah: null,
-        complete: null,
-        cancel: null,
-    });
-
     useEffect(() => {
         const urlParams = new URLSearchParams(window.location.search);
-        const batchId = urlParams.get("batch_id");
-        const jobType = urlParams.get("job_type");
+        let batchId = urlParams.get("batch_id") || sessionStorage.getItem('active_batch_id');
+        let jobType = urlParams.get("job_type") || sessionStorage.getItem('active_job_type');
 
-        // Fungsi untuk membersihkan URL setelah selesai
-        const cleanUrl = () => {
+        const cleanup = () => {
+            if (window.jobInterval) clearInterval(window.jobInterval);
+            window.jobInterval = null;
+            setProgressStates({ mentah: null });
+            sessionStorage.removeItem('active_batch_id');
+            sessionStorage.removeItem('active_job_type');
+            startTimeRef.current = null;
+            setTimeRemaining(null);
+            setIsPaused(false);
+
             const currentUrl = new URL(window.location.href);
             currentUrl.searchParams.delete("batch_id");
             currentUrl.searchParams.delete("job_type");
             window.history.replaceState({}, document.title, currentUrl.toString());
         };
 
-        // Gunakan kondisi 'if' yang lebih sederhana dan andal dari kode lama Anda
-        if (batchId && jobType && progressStates[jobType] === null) {
+        if (batchId && jobType) {
+            sessionStorage.setItem('active_batch_id', batchId);
+            sessionStorage.setItem('active_job_type', jobType);
 
-            // Langsung set progress ke 0 agar progress bar muncul
-            setProgressStates((prev) => ({ ...prev, [jobType]: 0 }));
+            if (progressStates.mentah === null) {
+                setProgressStates({ mentah: 0 });
+            }
 
-            const interval = setInterval(() => {
+            if (window.jobInterval) clearInterval(window.jobInterval);
+
+            window.jobInterval = setInterval(() => {
+                if (isPaused) return; // Jika dijeda, lewati pengecekan
+
                 axios.get(route("import.progress", { batchId }))
-                    .then((response) => {
+                    .then(response => {
                         const progress = response.data.progress ?? 0;
-                        setProgressStates((prev) => ({ ...prev, [jobType]: progress }));
+                        setProgressStates({ mentah: progress });
+
+                        if (progress > 1 && progress < 100) {
+                            if (!startTimeRef.current) startTimeRef.current = Date.now() - ((4 * 60 * 1000) * (progress / 100)); // Estimasi awal
+
+                            const elapsedTime = (Date.now() - startTimeRef.current) / 1000;
+                            const totalEstimatedTime = 4 * 60; // Asumsi 4 menit
+                            const remainingTime = totalEstimatedTime - (elapsedTime % totalEstimatedTime);
+
+                            const minutes = Math.max(0, Math.floor(remainingTime / 60));
+                            const seconds = Math.max(0, Math.floor(remainingTime % 60));
+                            setTimeRemaining(`${minutes} menit ${seconds} detik`);
+                        } else {
+                            setTimeRemaining(null);
+                        }
 
                         if (progress >= 100) {
-                            clearInterval(interval);
+                            cleanup();
                             setTimeout(() => {
-                                setProgressStates((prev) => ({ ...prev, [jobType]: null }));
-                                cleanUrl();
-                                router.reload({
-                                    preserveScroll: true,
-                                    // Anda bisa sesuaikan 'only' jika perlu
-                                });
-                            }, 1500); // Beri jeda 1.5 detik
+                                router.reload({ preserveScroll: true });
+                                toast.success("Proses impor data selesai!");
+                            }, 1500);
                         }
                     })
-                    .catch((error) => {
+                    .catch(error => {
                         console.error("Gagal mengambil progres job:", error);
-                        clearInterval(interval);
-                        setProgressStates((prev) => ({ ...prev, [jobType]: null }));
-                        cleanUrl();
+                        toast.error("Terjadi kesalahan saat memproses file.");
+                        cleanup();
                     });
-            }, 1000); // Interval polling setiap 1 detik
-
-            return () => clearInterval(interval);
+            }, 2000);
         }
-    }, []); // Dependency array kosong agar hanya berjalan sekali saat mount
 
+        return () => {
+            if (window.jobInterval) clearInterval(window.jobInterval);
+        };
+    }, [usePage().props.url, isPaused]);
+
+    const handlePauseToggle = () => setIsPaused(prev => !prev);
 
     const {
         data: uploadData,
@@ -923,12 +965,6 @@ export default function AnalysisDigitalProduct({
                 {},
                 {
                     preserveScroll: true,
-                    onSuccess: () => {
-                        toast.success("Seluruh histori berhasil dihapus.");
-                    },
-                    onError: () => {
-                        toast.error("Gagal menghapus histori.");
-                    },
                 },
             );
         }
@@ -1162,59 +1198,92 @@ export default function AnalysisDigitalProduct({
                         <h3 className="font-semibold text-lg text-gray-800">
                             Unggah Data Mentah
                         </h3>
-                        <p className="text-gray-500 mt-1 text-sm">
-                            Unggah Dokumen (xlsx, xls, csv) untuk memperbarui
-                            data.
-                        </p>
-                        <form
-                            onSubmit={handleUploadSubmit}
-                            className="mt-4 space-y-4"
-                        >
-                            <div>
-                                <input
-                                    type="file"
-                                    className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"
-                                    onChange={(e) =>
-                                        setUploadData(
-                                            "document",
-                                            e.target.files[0],
-                                        )
-                                    }
-                                    disabled={processing}
-                                />
-                                {errors.document && (
-                                    <p className="text-red-500 text-xs mt-1">
-                                        {errors.document}
-                                    </p>
-                                )}
-                            </div>
-                            {progressStates.mentah !== null && (
+
+                        {/* Tampilkan Form Unggah HANYA JIKA TIDAK ADA PROSES BERJALAN */}
+                        {!isProcessingMentah && (
+                            <>
+                                <p className="text-gray-500 mt-1 text-sm">
+                                    Unggah Dokumen (xlsx, xls, csv) untuk memperbarui data.
+                                </p>
+                                <form
+                                    onSubmit={handleUploadSubmit}
+                                    className="mt-4 space-y-4"
+                                >
+                                    <div>
+                                        <input
+                                            type="file"
+                                            className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"
+                                            onChange={(e) =>
+                                                setUploadData(
+                                                    "document",
+                                                    e.target.files[0],
+                                                )
+                                            }
+                                            disabled={processing}
+                                        />
+                                        {errors.document && (
+                                            <p className="text-red-500 text-xs mt-1">
+                                                {errors.document}
+                                            </p>
+                                        )}
+                                    </div>
+                                    <div className="flex items-center gap-4">
+                                        <button
+                                            type="submit"
+                                            disabled={processing}
+                                            className="px-4 py-2 bg-blue-600 text-white font-semibold rounded-md hover:bg-blue-700 disabled:bg-blue-400"
+                                        >
+                                            {processing
+                                                ? "Mengunggah..."
+                                                : "Unggah Dokumen"}
+                                        </button>
+                                        {processing && (
+                                            <button
+                                                type="button"
+                                                onClick={() => cancel()}
+                                                className="px-4 py-2 bg-red-600 text-white font-semibold rounded-md hover:bg-red-700"
+                                            >
+                                                Batal
+                                            </button>
+                                        )}
+                                    </div>
+                                </form>
+                            </>
+                        )}
+
+                        {/* Tampilkan Progress Bar dan Kontrol JIKA PROSES SEDANG BERJALAN */}
+                        {isProcessingMentah && (
+                            <div className="mt-4 space-y-4">
                                 <ProgressBar
                                     progress={progressStates.mentah}
-                                    text="Memproses file..."
+                                    text={`Memproses file...`}
                                 />
-                            )}
-                            <div className="flex items-center gap-4">
-                                <button
-                                    type="submit"
-                                    disabled={processing}
-                                    className="px-4 py-2 bg-blue-600 text-white font-semibold rounded-md hover:bg-blue-700 disabled:bg-blue-400"
-                                >
-                                    {processing
-                                        ? "Mengunggah..."
-                                        : "Unggah Dokumen"}
-                                </button>
-                                {processing && (
+                                {timeRemaining && (
+                                    <p className="text-sm text-gray-600 animate-pulse">
+                                        Perkiraan waktu selesai: <strong>{timeRemaining}</strong>
+                                    </p>
+                                )}
+                                <div className="flex items-center gap-4 mt-2">
                                     <button
                                         type="button"
-                                        onClick={() => cancel()}
-                                        className="px-4 py-2 bg-red-600 text-white font-semibold rounded-md hover:bg-red-700"
+                                        onClick={handlePauseToggle}
+                                        className={`w-1/2 px-4 py-2 font-semibold rounded-md text-white transition-colors ${isPaused
+                                                ? "bg-green-500 hover:bg-green-600"
+                                                : "bg-yellow-500 hover:bg-yellow-600"
+                                            }`}
                                     >
-                                        Batal
+                                        {isPaused ? "Lanjutkan" : "Jeda"}
                                     </button>
-                                )}
+                                    <button
+                                        type="button"
+                                        onClick={handleCancelUpload}
+                                        className="w-1/2 px-4 py-2 bg-red-600 text-white font-semibold rounded-md hover:bg-red-700 transition-colors"
+                                    >
+                                        Batalkan
+                                    </button>
+                                </div>
                             </div>
-                        </form>
+                        )}
                     </div>
                     <CustomTargetForm
                         tableConfig={tableConfig}

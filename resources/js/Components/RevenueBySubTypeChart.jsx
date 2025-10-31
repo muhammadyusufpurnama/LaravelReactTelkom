@@ -54,7 +54,7 @@ export default function RevenueBySubTypeChart({ data }) {
 
     // [PERBAIKAN] Pengecekan di sini juga diubah menjadi Array.isArray()
     if (!Array.isArray(data) || data.length === 0) {
-        return <div className="text-center text-gray-500 p-8">Tidak ada data revenue untuk ditampilkan pada periode ini.</div>;
+        return <div className="flex items-center justify-center h-[400px] text-gray-500">Tidak ada data order untuk ditampilkan pada periode ini.</div>;
     }
 
     return (

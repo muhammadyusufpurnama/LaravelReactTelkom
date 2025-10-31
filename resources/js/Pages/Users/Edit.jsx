@@ -20,7 +20,7 @@ export default function Edit({ auth, user }) {
     const submit = (e) => {
         e.preventDefault();
         // Menggunakan method 'put' untuk update
-        put(route('users.update', user.id));
+        put(route('superadmin.users.update', user.id));
     };
 
     return (
@@ -29,7 +29,7 @@ export default function Edit({ auth, user }) {
             header={
                 <div className="flex justify-between items-center">
                     <h2 className="font-semibold text-xl text-gray-800 leading-tight">Edit User: {user.name}</h2>
-                    <Link href={route('users.index')} className="bg-gray-300 hover:bg-gray-400 text-gray-800 font-bold py-2 px-4 rounded">
+                    <Link href={route('superadmin.users.index')} className="bg-gray-300 hover:bg-gray-400 text-gray-800 font-bold py-2 px-4 rounded">
                         Cancel
                     </Link>
                 </div>

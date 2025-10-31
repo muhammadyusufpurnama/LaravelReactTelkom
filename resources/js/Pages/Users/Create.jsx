@@ -18,7 +18,7 @@ export default function Create({ auth }) {
 
     const submit = (e) => {
         e.preventDefault();
-        post(route('users.store'));
+        post(route('superadmin.users.store'));
     };
 
     return (
@@ -27,7 +27,7 @@ export default function Create({ auth }) {
             header={
                 <div className="flex justify-between items-center">
                     <h2 className="font-semibold text-xl text-gray-800 leading-tight">Create New User</h2>
-                    <Link href={route('users.index')} className="bg-gray-300 hover:bg-gray-400 text-gray-800 font-bold py-2 px-4 rounded">
+                    <Link href={route('superadmin.users.index')} className="bg-gray-300 hover:bg-gray-400 text-gray-800 font-bold py-2 px-4 rounded">
                         Cancel
                     </Link>
                 </div>

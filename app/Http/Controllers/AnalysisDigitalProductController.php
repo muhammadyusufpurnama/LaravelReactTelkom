@@ -14,9 +14,11 @@ use App\Models\Target;
 use App\Models\UpdateLog;
 use App\Models\UserTableConfiguration;
 use Illuminate\Http\Request;
+use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Bus;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Redirect;
 use Inertia\Inertia;
 use Maatwebsite\Excel\Facades\Excel;
@@ -138,14 +140,46 @@ class AnalysisDigitalProductController extends Controller
         return Redirect::back()->with('success', 'Seluruh data histori berhasil dihapus.');
     }
 
+    public function cancelImport(Request $request)
+    {
+        // 1. Validasi request untuk memastikan batch_id ada
+        $validated = $request->validate(['batch_id' => 'required|string']);
+
+        // 2. DEFINISIKAN variabel $batchId dari data yang divalidasi
+        $batchId = $validated['batch_id'];
+
+        // 3. Log bahwa proses pembatalan dimulai (akan muncul di laravel.log)
+        Log::info("Mencoba membatalkan batch dengan ID: {$batchId}");
+
+        // 4. Cari batch job menggunakan Bus facade
+        $batch = Bus::findBatch($batchId);
+
+        if ($batch) {
+            // 5. Jika batch ditemukan, batalkan
+            $batch->cancel();
+            Log::info("Batch ID: {$batchId} berhasil ditemukan dan DIBATALKAN.");
+
+            // 6. Bersihkan session (PERHATIKAN: $batchId TIDAK diperlukan di sini)
+            session()->forget(['active_batch_id', 'active_job_type']);
+
+            return Redirect::back()->with('success', 'Proses impor berhasil dibatalkan.');
+        }
+
+        // 7. Log jika batch tidak ditemukan
+        Log::error("Gagal menemukan batch dengan ID: {$batchId} untuk dibatalkan.");
+
+        return Redirect::back()->with('error', 'Gagal menemukan proses untuk dibatalkan (mungkin sudah selesai atau tidak ada).');
+    }
+
     // ===================================================================
     //  METHOD INDEX UTAMA DENGAN LOGIKA HYBRID
     // ===================================================================
     public function index(Request $request)
     {
-        // [1] BACA SEMUA FILTER, TERMASUK TAB YANG AKTIF
+        // [1] BACA SEMUA FILTER, TERMASUK TAB YANG AKTIF DAN KATA KUNCI PENCARIAN
         $filters = $request->only(['search', 'period', 'segment', 'witel', 'in_progress_year', 'net_price_status', 'tab']);
-        $activeTab = $request->input('tab', 'inprogress'); // Default tab adalah 'inprogress'
+        $activeTab = $request->input('tab', 'inprogress');
+        $search = $request->input('search'); // Ambil kata kunci pencarian sekali di awal
 
         // Ambil filter utama untuk report
         $periodInput = $request->input('period', now()->format('Y-m'));
@@ -163,104 +197,67 @@ class AnalysisDigitalProductController extends Controller
         // BAGIAN 2: LOGIKA BARU UNTUK DATA TAB DETAIL (PAGINASI)
         // ===================================================================
 
-        // [2] SIAPKAN SEMUA QUERY DASAR UNTUK SETIAP TAB
+        // [2] SIAPKAN SEMUA QUERY DASAR DAN TERAPKAN FILTER PENCARIAN SECARA KONSISTEN
         $inProgressQuery = DocumentData::query()
             ->where('status_wfm', 'in progress')
             ->where('segment', $selectedSegment)
             ->whereYear('order_created_date', $request->input('in_progress_year', now()->year))
-            ->when($request->input('witel'), fn ($q, $w) => $q->where('nama_witel', $w));
+            ->when($request->input('witel'), fn ($q, $w) => $q->where('nama_witel', $w))
+            ->when($search, fn ($q, $s) => $q->where('order_id', 'like', '%'.$s.'%')); // ✅ Pencarian LIKE
 
         $completeQuery = DocumentData::query()
             ->where('status_wfm', 'done close bima')
-            ->where('segment', $selectedSegment);
+            ->where('segment', $selectedSegment)
+            ->when($search, fn ($q, $s) => $q->where('order_id', 'like', '%'.$s.'%')); // ✅ Pencarian LIKE
 
         $qcQuery = DocumentData::query()
             ->where('status_wfm', '')
-            ->where('segment', $selectedSegment);
+            ->where('segment', $selectedSegment)
+            ->when($search, fn ($q, $s) => $q->where('order_id', 'like', '%'.$s.'%')); // ✅ Pencarian LIKE
 
-        $historyQuery = UpdateLog::query()->latest();
+        $historyQuery = UpdateLog::query()
+            ->when($search, fn ($q, $s) => $q->where('order_id', 'like', '%'.$s.'%')) // ✅ Pencarian LIKE
+            ->latest();
 
-        // Query [A] untuk produk tunggal (dari document_data)
+        // --- Logika Khusus untuk Tab Net Price ---
         $singleProductsQuery = DB::table('document_data')
-            ->select(
-                'order_id as uid',
-                'order_id',
-                'product as product_name',
-                'net_price',
-                'nama_witel',
-                'customer_name',
-                'order_created_date',
-                'is_template_price'
-            )
-            ->where('product', 'NOT LIKE', '%-%'); // Hanya ambil produk tunggal
+            ->select('order_id as uid', 'order_id', 'product as product_name', 'net_price', 'nama_witel', 'customer_name', 'order_created_date', 'is_template_price')
+            ->where('product', 'NOT LIKE', '%-%')
+            ->when($search, fn ($q, $s) => $q->where('document_data.order_id', 'like', '%'.$s.'%')); // ✅ Pencarian LIKE
 
-        // Query [B] untuk produk bundling (dari order_products)
         $bundleProductsQuery = DB::table('order_products')
             ->join('document_data', 'order_products.order_id', '=', 'document_data.order_id')
-            ->select(
-                'order_products.id as uid',
-                'order_products.order_id',
-                'order_products.product_name',
-                'order_products.net_price',
-                'document_data.nama_witel',
-                'document_data.customer_name',
-                'document_data.order_created_date',
-                DB::raw('1 as is_template_price') // Semua bundling adalah 'template'
-            );
+            ->select('order_products.id as uid', 'order_products.order_id', 'order_products.product_name', 'order_products.net_price', 'document_data.nama_witel', 'document_data.customer_name', 'document_data.order_created_date', DB::raw('1 as is_template_price'))
+            ->when($search, fn ($q, $s) => $q->where('order_products.order_id', 'like', '%'.$s.'%')); // ✅ Pencarian LIKE
 
-        // [PERBAIKAN] Terapkan filter PENCARIAN (search) ke sub-query SEBELUM union
-        if ($request->filled('search')) {
-            $searchTerm = $request->search;
-            // [FIX] Gunakan '=' untuk exact match
-            $singleProductsQuery->where('document_data.order_id', '=', $searchTerm);
-            $bundleProductsQuery->where('order_products.order_id', '=', $searchTerm);
-        }
-
-        // [PERBAIKAN] Terapkan filter STATUS (pasti/template) ke sub-query SEBELUM union
+        // Terapkan filter status (pasti/template) ke sub-query SEBELUM union
         $netPriceStatus = $request->input('net_price_status');
-
         if ($netPriceStatus === 'pasti') {
-            // "Harga Pasti" HANYA dari produk tunggal & is_template_price = 0
-            $singleProductsQuery->where('is_template_price', false);
-            $netPriceQuery = $singleProductsQuery; // HANYA query A
+            $netPriceQuery = $singleProductsQuery->where('is_template_price', false);
         } elseif ($netPriceStatus === 'template') {
-            // "Harga Template" = (Template 0-price) + (Semua Bundling)
-            $singleProductsQuery->where('is_template_price', true);
-            $netPriceQuery = $singleProductsQuery->union($bundleProductsQuery); // Query A + Query B
+            $netPriceQuery = $singleProductsQuery->where('is_template_price', true)->union($bundleProductsQuery);
         } else {
-            // Jika tidak ada filter, tampilkan semua (A + B)
             $netPriceQuery = $singleProductsQuery->union($bundleProductsQuery);
         }
 
-        if ($request->filled('search')) {
-            $searchTerm = $request->search;
-
-            $inProgressQuery->where('order_id', '=', $searchTerm);
-            $completeQuery->where('order_id', '=', $searchTerm);
-            $qcQuery->where('order_id', '=', $searchTerm);
-            $historyQuery->where('order_id', '=', $searchTerm);
-        }
-
+        // [3] HITUNG JUMLAH DATA UNTUK SETIAP TAB (TAB COUNTS)
         $tabCounts = [
             'inprogress' => (clone $inProgressQuery)->count(),
             'complete' => (clone $completeQuery)->count(),
             'qc' => (clone $qcQuery)->count(),
             'history' => (clone $historyQuery)->count(),
-            'netprice' => DB::table(DB::raw("({$netPriceQuery->toSql()}) as sub"))
-                          ->mergeBindings($netPriceQuery)
-                          ->count(),
+            'netprice' => DB::table(DB::raw("({$netPriceQuery->toSql()}) as sub"))->mergeBindings($netPriceQuery)->count(),
         ];
 
-        // [3] INISIALISASI SEMUA DATA PAGINATOR SEBAGAI OBJEK KOSONG
-        // Ini PENTING agar props di React tidak error
-        $emptyPaginator = fn () => new \Illuminate\Pagination\LengthAwarePaginator([], 0, $paginationCount);
+        // [4] INISIALISASI SEMUA DATA PAGINATOR SEBAGAI OBJEK KOSONG
+        $emptyPaginator = fn () => new LengthAwarePaginator([], 0, $paginationCount);
         $inProgressData = $emptyPaginator();
         $completeData = $emptyPaginator();
         $qcData = $emptyPaginator();
         $historyData = $emptyPaginator();
         $netPriceData = $emptyPaginator();
 
-        // [4] JALANKAN PAGINASI HANYA UNTUK TAB YANG AKTIF
+        // [5] JALANKAN PAGINASI HANYA UNTUK TAB YANG AKTIF
         switch ($activeTab) {
             case 'inprogress':
                 $inProgressData = $inProgressQuery->orderBy('order_created_date', 'desc')->paginate($paginationCount)->withQueryString();
@@ -272,7 +269,7 @@ class AnalysisDigitalProductController extends Controller
                 $qcData = $qcQuery->orderBy('updated_at', 'desc')->paginate($paginationCount)->withQueryString();
                 break;
             case 'history':
-                $historyData = $historyQuery->paginate(10)->withQueryString(); // History punya item per halaman berbeda
+                $historyData = $historyQuery->paginate(10)->withQueryString();
                 break;
             case 'netprice':
                 $netPriceData = DB::table(DB::raw("({$netPriceQuery->toSql()}) as sub"))
@@ -290,17 +287,12 @@ class AnalysisDigitalProductController extends Controller
         $configRecord = UserTableConfiguration::where('page_name', $pageName)->first();
         $savedTableConfig = $configRecord ? $configRecord->configuration : null;
         $customTargets = CustomTarget::where('user_id', auth()->id())->where('page_name', $pageName)->where('period', $reportPeriod->format('Y-m-d'))->get();
-
         $officers = AccountOfficer::orderBy('name')->get();
-        // Logika untuk $kpiData... (copy-paste dari controller lama Anda)
+
+        // Logika untuk $kpiData... (tidak diubah)
         $kpiData = $officers->map(function ($officer) {
-            // ... (SELURUH LOGIKA PERHITUNGAN KPI ANDA DI SINI) ...
-            // Kode ini terlalu panjang untuk disalin ulang, pastikan Anda memasukkan
-            // blok kalkulasi KPI dari controller lama Anda di sini.
             $witelFilter = $officer->filter_witel_lama;
-            $specialFilter = $officer->special_filter_column && $officer->special_filter_value
-                ? ['column' => $officer->special_filter_column, 'value' => $officer->special_filter_value]
-                : null;
+            $specialFilter = $officer->special_filter_column && $officer->special_filter_value ? ['column' => $officer->special_filter_column, 'value' => $officer->special_filter_value] : null;
             $singleQuery = DocumentData::where('witel_lama', $witelFilter)->whereNotNull('product')->where('product', 'NOT LIKE', '%-%')->where('product', 'NOT LIKE', "%\n%")->when($specialFilter, fn ($q) => $q->where($specialFilter['column'], $specialFilter['value']));
             $bundleQuery = DB::table('order_products')->join('document_data', 'order_products.order_id', '=', 'document_data.order_id')->where('document_data.witel_lama', $witelFilter)->when($specialFilter, fn ($q) => $q->where('document_data.'.$specialFilter['column'], $specialFilter['value']));
             $done_ncx = $singleQuery->clone()->where('status_wfm', 'done close bima')->where('channel', '!=', 'SC-One')->count() + $bundleQuery->clone()->where('order_products.status_wfm', 'done close bima')->where('order_products.channel', '!=', 'SC-One')->count();
@@ -328,26 +320,19 @@ class AnalysisDigitalProductController extends Controller
         // ===================================================================
         return Inertia::render('Admin/AnalysisDigitalProduct', [
             'tabCounts' => $tabCounts,
-            // Data Report Utama
             'reportData' => $reportData,
             'currentSegment' => $selectedSegment,
             'period' => $periodInput,
             'currentInProgressYear' => $request->input('in_progress_year', now()->year),
-
-            // Data Paginasi untuk Detail Tab
             'inProgressData' => $inProgressData,
             'completeData' => $completeData,
             'netPriceData' => $netPriceData,
             'historyData' => $historyData,
             'qcData' => $qcData,
-
-            // Data Tambahan
             'accountOfficers' => $officers,
             'kpiData' => $kpiData,
             'customTargets' => $customTargets->groupBy('target_key')->map(fn ($group) => $group->pluck('value', 'witel')),
             'savedTableConfig' => $savedTableConfig,
-
-            // Filter
             'filters' => $filters,
         ]);
     }
@@ -553,14 +538,15 @@ class AnalysisDigitalProductController extends Controller
             ->name('Import Data Mentah')
             ->dispatch();
 
+        // [FIX] Ambil semua input dari request sebelumnya
+        $queryParams = $request->except('document');
+
+        // Gabungkan dengan batch_id dan job_type
+        $queryParams['batch_id'] = $batch->id;
+        $queryParams['job_type'] = 'mentah';
+
         return Inertia::location(
-            route('admin.analysisDigitalProduct.index', [
-                'batch_id' => $batch->id,
-                'job_type' => 'mentah',
-                'segment' => $request->input('segment', 'SME'),
-                'period' => $request->input('period', now()->format('Y-m')),
-                'in_progress_year' => $request->input('in_progress_year', now()->year),
-            ]),
+            route('admin.analysisDigitalProduct.index', $queryParams)
         );
     }
 
@@ -793,13 +779,15 @@ class AnalysisDigitalProductController extends Controller
         return Redirect::back()->with('success', 'Tampilan tabel berhasil disimpan!');
     }
 
-    public function resetTableConfig(Request $request)
+    public function resetConfig(Request $request)
     {
         $validated = $request->validate([
             'page_name' => 'required|string',
         ]);
 
         UserTableConfiguration::where('page_name', $validated['page_name'])
+            // [FIX] Tambahkan baris ini untuk menargetkan user yang sedang login
+            ->where('user_id', Auth::id())
             ->delete();
 
         return Redirect::back()->with('success', 'Tampilan tabel berhasil di-reset ke pengaturan awal.');

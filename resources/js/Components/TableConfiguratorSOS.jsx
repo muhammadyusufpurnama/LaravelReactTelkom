@@ -7,83 +7,74 @@ import PrimaryButton from '@/Components/PrimaryButton';
 
 const MySwal = withReactContent(Swal);
 
-const TableConfigurator = ({ tableConfig, setTableConfig, currentSegment, onSave }) => {
+// [PERUBAHAN 1] Ganti nama komponen dan hapus prop 'currentSegment'
+const TableConfiguratorSOS = ({ tableConfig, setTableConfig, onSave }) => {
     const [isExpanded, setIsExpanded] = useState(false);
+
+    // Inisialisasi state dengan mencari grup pertama yang valid
+    const firstGroup = tableConfig.find(g => g.groupTitle) || {};
+
     const [formState, setFormState] = useState({
         mode: "sub-column",
-        groupTitle: tableConfig[0]?.groupTitle || "",
+        groupTitle: firstGroup.groupTitle || "",
         columnTitle: "",
-        columnType: "calculation",
+        columnType: "target",
         operation: "sum",
         operands: [],
         initialSubColumnTitle: "Value",
     });
     const [editGroup, setEditGroup] = useState({
-        title: tableConfig[0]?.groupTitle || "",
-        className: tableConfig[0]?.groupClass || "",
+        title: firstGroup.groupTitle || "",
+        className: firstGroup.groupClass || "",
     });
     const [columnToDelete, setColumnToDelete] = useState("");
     const [columnToEdit, setColumnToEdit] = useState("");
     const [editFormState, setEditFormState] = useState(null);
 
+    // [FIX 1] 'useMemo' sekarang bisa menangani struktur data campuran
     const availableColumns = useMemo(() => {
         const columns = [];
-        tableConfig.forEach((group) => {
-            group.columns.forEach((col) => {
-                const processColumn = (c, parentKey = "", parentTitle = "") => {
-                    if (c.subColumns) {
-                        c.subColumns.forEach((sc) =>
-                            processColumn(sc, col.key, col.title),
-                        );
-                    } else if (c.type !== "calculation") {
-                        const key = parentKey ? `${parentKey}.${c.key}` : c.key;
-                        const label = parentTitle
-                            ? `${group.groupTitle} > ${parentTitle} > ${c.title}`
-                            : `${group.groupTitle} > ${c.title}`;
-                        columns.push({ label, value: key });
-                    }
-                };
-                processColumn(col);
-            });
+        tableConfig.forEach((item) => {
+            // HANYA proses item yang merupakan GRUP
+            if (item.groupTitle && item.columns) {
+                item.columns.forEach((col) => {
+                    const processColumn = (c, parentKey = "", parentTitle = "") => {
+                        if (c.subColumns) {
+                            c.subColumns.forEach((sc) => processColumn(sc, col.key, col.title));
+                        } else if (c.type !== "calculation") {
+                            const key = parentKey ? `${parentKey}.${c.key}` : c.key;
+                            const label = parentTitle ? `${item.groupTitle} > ${parentTitle} > ${c.title}` : `${item.groupTitle} > ${c.title}`;
+                            columns.push({ label, value: key });
+                        }
+                    };
+                    processColumn(col);
+                });
+            }
         });
         return columns.sort((a, b) => a.label.localeCompare(b.label));
     }, [tableConfig]);
 
     const allColumnsList = useMemo(() => {
         const columns = [];
-        tableConfig.forEach((group) => {
-            group.columns.forEach((col) => {
-                if (col.subColumns && col.subColumns.length > 0) {
-                    col.subColumns.forEach((sc) => {
-                        columns.push({
-                            label: `${group.groupTitle} > ${col.title} > ${sc.title}`,
-                            value: `${group.groupTitle}.${col.key}.${sc.key}`,
-                        });
-                    });
-                } else {
-                    columns.push({
-                        label: `${group.groupTitle} > ${col.title}`,
-                        value: `${group.groupTitle}.${col.key}`,
-                    });
-                }
-            });
+        tableConfig.forEach((item) => {
+            if (item.configurable === false) return;
+
+            if (item.groupTitle && item.columns) {
+                item.columns.forEach((col) => {
+                    if (col.subColumns && col.subColumns.length > 0) {
+                        col.subColumns.forEach((sc) => columns.push({ label: `${item.groupTitle} > ${col.title} > ${sc.title}`, value: `${item.groupTitle}.${col.key}.${sc.key}` }));
+                    } else {
+                        columns.push({ label: `${item.groupTitle} > ${col.title}`, value: `${item.groupTitle}.${col.key}` });
+                    }
+                });
+            } else if (item.key) {
+                columns.push({ label: item.title, value: item.key });
+            }
         });
         return columns;
     }, [tableConfig]);
 
-    useEffect(() => {
-        if (tableConfig.length > 0) {
-            const currentGroupExists = tableConfig.some(g => g.groupTitle === editGroup.title);
-            if (!currentGroupExists) {
-                setEditGroup({ title: tableConfig[0].groupTitle, className: tableConfig[0].groupClass || "" });
-            }
-            const currentFormGroupExists = tableConfig.some(g => g.groupTitle === formState.groupTitle);
-            if (!currentFormGroupExists) {
-                setFormState(prev => ({ ...prev, groupTitle: tableConfig[0].groupTitle }));
-            }
-        }
-    }, [tableConfig]);
-
+    // [FIX 2] Fungsi Reset sekarang di-hardcode untuk SOS
     const handleResetConfig = async () => {
         const result = await MySwal.fire({
             title: 'Anda Yakin?',
@@ -97,10 +88,11 @@ const TableConfigurator = ({ tableConfig, setTableConfig, currentSegment, onSave
         });
 
         if (result.isConfirmed) {
-            router.post(route("admin.analysisDigitalProduct.resetConfig"), {
-                page_name: `analysis_digital_${currentSegment.toLowerCase()}`
+            router.post(route("admin.analysisSOS.resetConfig"), { // Route spesifik SOS
+                page_name: `analysis_sos` // Nama halaman spesifik SOS
             }, {
                 preserveScroll: true,
+                onSuccess: () => toast.success("Tampilan berhasil direset ke default.")
             });
         }
     };
@@ -168,38 +160,42 @@ const TableConfigurator = ({ tableConfig, setTableConfig, currentSegment, onSave
         if (formState.mode === "group-column") {
             const newGroup = {
                 groupTitle: formState.columnTitle,
-                groupClass: "bg-gray-600",
-                columnClass: "bg-gray-500",
-                subColumnClass: "bg-gray-400",
                 columns: [{
                     key: `_${formState.initialSubColumnTitle.toLowerCase().replace(/\s+/g, "_")}`,
                     title: formState.initialSubColumnTitle,
-                    type: "data",
+                    type: "numeric",
+                    visible: true,
                 }],
             };
             setTableConfig(prev => [...prev, newGroup]);
             toast.success(`Grup "${formState.columnTitle}" berhasil ditambahkan.`);
-        } else {
+        } else { // Mode "sub-column"
             const newConfig = JSON.parse(JSON.stringify(tableConfig));
             const targetGroup = newConfig.find(g => g.groupTitle === formState.groupTitle);
+
             if (targetGroup) {
                 const newColumn = {
                     key: newKey,
                     title: formState.columnTitle,
+                    // [FIX] Hapus logika ternary yang salah. Sekarang tipe kolom akan 'target' atau 'calculation'.
                     type: formState.columnType,
+                    visible: true,
                 };
+
                 if (formState.columnType === "calculation") {
                     newColumn.calculation = {
                         operation: formState.operation,
                         operands: formState.operands,
                     };
                 }
+
                 targetGroup.columns.push(newColumn);
                 setTableConfig(newConfig);
                 toast.success(`Kolom "${formState.columnTitle}" ditambahkan ke grup "${formState.groupTitle}".`);
+            } else {
+                toast.error(`Grup target "${formState.groupTitle}" tidak ditemukan.`);
             }
         }
-        // Reset form
         setFormState(prev => ({ ...prev, columnTitle: "", operands: [], initialSubColumnTitle: "Value" }));
     };
 
@@ -420,7 +416,7 @@ const TableConfigurator = ({ tableConfig, setTableConfig, currentSegment, onSave
                                                 onChange={handleInputChange}
                                                 className="mt-1 block w-full border-gray-300 rounded-md shadow-sm"
                                             >
-                                                {tableConfig.map((g) => (
+                                                {tableConfig.filter(g => g.groupTitle).map((g) => (
                                                     <option key={g.groupTitle} value={g.groupTitle}>{g.groupTitle}</option>
                                                 ))}
                                             </select>
@@ -507,8 +503,11 @@ const TableConfigurator = ({ tableConfig, setTableConfig, currentSegment, onSave
                                 </div>
                                 <div className="space-y-4">
                                     <h5 className="font-semibold text-sm text-gray-700">Ubah Warna Grup</h5>
-                                    <select value={editGroup.title} onChange={handleSelectGroupToEdit} className="mt-1 block w-full border-gray-300 rounded-md shadow-sm">
-                                        {tableConfig.map(g => <option key={g.groupTitle} value={g.groupTitle}>{g.groupTitle}</option>)}
+                                    <select value={editGroup.title} onChange={handleSelectGroupToEdit} className="mt-1 block w-full ...">
+                                        {tableConfig
+                                            .filter(g => g.groupTitle) // <-- FIX: Hanya proses item yang memiliki groupTitle
+                                            .map(g => <option key={g.groupTitle} value={g.groupTitle}>{g.groupTitle}</option>)
+                                        }
                                     </select>
                                     <input type="text" value={editGroup.className} onChange={e => setEditGroup({ ...editGroup, className: e.target.value })} className="mt-1 block w-full border-gray-300 rounded-md shadow-sm" placeholder="Contoh: bg-red-600" />
                                     <PrimaryButton type="button" onClick={handleSaveColor} className="w-full justify-center">Terapkan Warna</PrimaryButton>
@@ -553,4 +552,4 @@ const TableConfigurator = ({ tableConfig, setTableConfig, currentSegment, onSave
     );
 };
 
-export default TableConfigurator;
+export default TableConfiguratorSOS;

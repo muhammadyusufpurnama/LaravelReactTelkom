@@ -7,8 +7,10 @@ use App\Models\OrderProduct;
 use App\Models\UpdateLog;
 use App\Traits\CalculatesProductPrice;
 use Carbon\Carbon;
+use Illuminate\Support\Facades\Bus;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Maatwebsite\Excel\Concerns\OnEachRow;
 use Maatwebsite\Excel\Concerns\SkipsEmptyRows;
 use Maatwebsite\Excel\Concerns\WithChunkReading;
@@ -17,8 +19,8 @@ use Maatwebsite\Excel\Concerns\WithHeadingRow;
 use Maatwebsite\Excel\Events\AfterChunk;
 use Maatwebsite\Excel\Events\AfterImport;
 use Maatwebsite\Excel\Events\BeforeImport;
-use Maatwebsite\Excel\Row;
-use PhpOffice\PhpSpreadsheet\Shared\Date;
+use Maatwebsite\Excel\Row; // <-- TAMBAHKAN INI
+use PhpOffice\PhpSpreadsheet\Shared\Date; // <-- TAMBAHKAN INI
 
 class DocumentDataImport implements OnEachRow, WithChunkReading, WithEvents, WithHeadingRow, SkipsEmptyRows
 {
@@ -54,7 +56,6 @@ class DocumentDataImport implements OnEachRow, WithChunkReading, WithEvents, Wit
 
                 if (isset($totalRows[$worksheetName])) {
                     $this->totalRows = $totalRows[$worksheetName] - 1; // Kurangi 1 untuk header
-                    // Set progres awal ke 0, sama seperti kode lawas
                     Cache::put('import_progress_'.$this->batchId, 0, now()->addHour());
                 }
             },
@@ -66,9 +67,8 @@ class DocumentDataImport implements OnEachRow, WithChunkReading, WithEvents, Wit
                 }
             },
 
-            // [FIX] Hapus baris yang mengatur progress ke 100% dari sini
             AfterImport::class => function (AfterImport $event) {
-                // Biarkan kosong. Progres 100% sekarang ditangani oleh onRow.
+                // Biarkan kosong. Progres 100% ditangani oleh onRow.
             },
         ];
     }
@@ -76,6 +76,26 @@ class DocumentDataImport implements OnEachRow, WithChunkReading, WithEvents, Wit
     public function onRow(Row $row)
     {
         ++$this->processedRows;
+
+        // =======================================================
+        // == PENGECEKAN PEMBATALAN BARU (SETIAP 10 BARIS) ==
+        // =======================================================
+        // Untuk efisiensi, kita hanya mengecek ke database setiap 10 baris
+        if ($this->processedRows % 10 === 0) {
+            // Cari status batch saat ini
+            $batch = Bus::findBatch($this->batchId);
+
+            // Jika batch sudah dibatalkan oleh user
+            if ($batch && $batch->cancelled()) {
+                Log::warning("Batch [{$this->batchId}]: Pembatalan terdeteksi di baris {$this->processedRows}. Melempar exception untuk menghentikan impor.");
+
+                // Lempar exception untuk menghentikan proses
+                // Ini akan ditangkap oleh method `failed()` di Job.
+                throw new \Exception("Import cancelled by user at row {$this->processedRows}");
+            }
+        }
+        // =======================================================
+        // =======================================================
 
         // [IMPLEMENTASI DARI KODE LAWAS]
         // Logika ini akan memastikan progress berjalan mulus hingga 100%
@@ -90,10 +110,7 @@ class DocumentDataImport implements OnEachRow, WithChunkReading, WithEvents, Wit
                 $progress = round(($this->processedRows / $this->totalRows) * 100);
             }
 
-            // Hanya update cache jika ada perubahan nilai progress yang signifikan
-            // untuk menghindari penulisan cache yang berlebihan.
             if ($progress > 0) {
-                // Ambil progress terakhir dari cache untuk perbandingan
                 $lastProgress = Cache::get('import_progress_'.$this->batchId, 0);
                 if ($progress > $lastProgress) {
                     Cache::put('import_progress_'.$this->batchId, $progress, now()->addHour());
@@ -101,9 +118,7 @@ class DocumentDataImport implements OnEachRow, WithChunkReading, WithEvents, Wit
             }
         }
 
-        // ===================================================================
-        // SISA LOGIKA ANDA DI BAWAH INI TIDAK PERLU DIUBAH
-        // ===================================================================
+        // ... (SISA KODE onRow ANDA DI SINI, TIDAK PERLU DIUBAH) ...
 
         $rowAsArray = $row->toArray();
         $orderIdRaw = $rowAsArray['order_id'] ?? null;

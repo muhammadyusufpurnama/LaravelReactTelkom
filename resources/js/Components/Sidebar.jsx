@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Link, router } from '@inertiajs/react';
-import { MdDashboard, MdAssessment, MdKeyboardArrowDown, MdWifiTethering, MdExitToApp, MdCode } from 'react-icons/md';
+import { MdDashboard, MdAssessment, MdKeyboardArrowDown, MdWifiTethering, MdExitToApp, MdCode, MdHistory } from 'react-icons/md'; // <-- Tambahkan MdHistory
 import { FiUsers, FiChevronLeft, FiChevronRight, FiUser, FiLogOut, FiX } from 'react-icons/fi';
 import GoogleDriveUploader from '@/Components/GoogleDriveUploader';
 
@@ -11,7 +11,8 @@ const Logo = ({ isSidebarOpen }) => (
             <h1 className="text-2xl font-bold text-red-600">Telkom<span className="text-gray-800">Indonesia</span></h1>
         </div>
         <div className={`absolute transition-opacity duration-200 ${!isSidebarOpen ? 'opacity-100' : 'opacity-0'}`}>
-            <img src="/images/logo telkom.png" alt="Telkom" className="h-8" />
+            {/* Pastikan path gambar ini benar di proyek Anda */}
+            <img src="/images/logo telkom.png" alt="Telkom" className="h-8" onError={(e) => e.target.style.display = 'none'} />
         </div>
     </div>
 );
@@ -40,15 +41,15 @@ const Modal = ({ show, onClose, children }) => {
     }
     return (
         <div
-            className="fixed inset-0 bg-black bg-opacity-50 z-40 flex items-center justify-center"
+            className="fixed inset-0 bg-black bg-opacity-50 z-40 flex items-center justify-center p-4" // Tambah padding
             onClick={onClose}
         >
             <div
-                className="bg-white rounded-lg shadow-xl w-full max-w-2xl transform transition-all"
+                className="bg-white rounded-lg shadow-xl w-full max-w-2xl transform transition-all max-h-[90vh] overflow-y-auto" // Batasi tinggi & tambah scroll
                 onClick={e => e.stopPropagation()}
             >
                 <div className="p-6 relative">
-                    <button onClick={onClose} className="absolute top-4 right-4 text-gray-400 hover:text-gray-600">
+                    <button onClick={onClose} className="absolute top-4 right-4 text-gray-400 hover:text-gray-600 z-10">
                         <FiX size={24} />
                     </button>
                     {children}
@@ -64,7 +65,6 @@ const UserProfile = ({ user, isSidebarOpen, onLogout }) => {
     const [isEmbedModalOpen, setIsEmbedModalOpen] = useState(false);
     const profileRef = useRef(null);
 
-    // Menutup pop-up jika klik di luar
     useEffect(() => {
         function handleClickOutside(event) {
             if (profileRef.current && !profileRef.current.contains(event.target)) {
@@ -97,11 +97,7 @@ const UserProfile = ({ user, isSidebarOpen, onLogout }) => {
                             <p className="text-sm text-gray-500 truncate">{user.email}</p>
                         </div>
                         <div className="mt-2">
-                            {user.role === 'superadmin' && (
-                                <Link href={route('users.index')} className="flex items-center w-full px-4 py-2 text-sm text-gray-700 hover:bg-gray-100" onClick={() => setIsProfileOpen(false)}>
-                                    <FiUsers className="mr-3" />User Management
-                                </Link>
-                            )}
+                            {/* Tautan Super Admin Dipindah ke Nav Utama */}
 
                             {user.role === 'superadmin' && (
                                 <Link href={route('tools.google-drive-test')} className="flex items-center w-full px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">
@@ -133,7 +129,7 @@ const UserProfile = ({ user, isSidebarOpen, onLogout }) => {
                                 <FiUser className="mr-3" />Edit Profile
                             </Link>
                             <button
-                                onClick={onLogout}
+                                onClick={onLogout} // Memanggil fungsi logout internal
                                 className="w-full flex items-center space-x-3 px-4 py-2 text-sm text-red-700 hover:bg-red-100"
                             >
                                 <MdExitToApp className="text-red-500" />
@@ -147,7 +143,7 @@ const UserProfile = ({ user, isSidebarOpen, onLogout }) => {
                     onClick={() => setIsProfileOpen(!isProfileOpen)}
                 >
                     <div className="w-10 h-10 rounded-full bg-red-600 flex items-center justify-center text-white font-bold text-lg flex-shrink-0">
-                        {user.name.charAt(0).toUpperCase()}
+                        {user.name?.charAt(0).toUpperCase() || '?'}
                     </div>
                     <div className={`ml-3 flex-grow overflow-hidden transition-all duration-300 ${isSidebarOpen ? 'w-auto opacity-100' : 'w-0 opacity-0'}`}>
                         <p className="font-semibold text-gray-800 text-sm truncate">{user.name}</p>
@@ -184,13 +180,27 @@ export default function Sidebar({ user, isSidebarOpen, toggleSidebar, isCmsMode,
     const [isReportsOpen, setIsReportsOpen] = useState(false);
     const [isDigitalProductOpen, setIsDigitalProductOpen] = useState(false);
     const [isSosOpen, setIsSosOpen] = useState(false);
-    const [isAnalysisOpen, setIsAnalysisOpen] = useState(true);
+    const [isAnalysisOpen, setIsAnalysisOpen] = useState(true); // Default open untuk admin
 
+    // Cek route aktif menggunakan Inertia
     const isDashboardActive = route().current('dashboardDigitalProduct');
     const isReportsActive = route().current('data-report.index') || route().current('galaksi.index');
     const isAdminAnalysisActive = route().current('admin.analysisDigitalProduct.index') || route().current('admin.analysisSOS.index');
+    const isUserManagementActive = route().current('superadmin.users.*'); // <-- Sesuaikan dengan route group Anda
+    const isRollbackActive = route().current('superadmin.rollback.show'); // <-- Sesuaikan dengan route group Anda
 
     useEffect(() => {
+        // Otomatis buka menu jika route aktif dan sidebar terbuka
+        if (isSidebarOpen && isAdminAnalysisActive) setIsAnalysisOpen(true);
+        if (isSidebarOpen && isReportsActive) {
+            setIsReportsOpen(true);
+            if (route().current('data-report.index') || route().current('galaksi.index')) {
+                setIsDigitalProductOpen(true);
+            }
+        }
+        if (isSidebarOpen && isDashboardActive) setIsDashboardOpen(true);
+
+        // Tutup semua dropdown jika sidebar ditutup
         if (!isSidebarOpen) {
             setIsDashboardOpen(false);
             setIsReportsOpen(false);
@@ -198,7 +208,25 @@ export default function Sidebar({ user, isSidebarOpen, toggleSidebar, isCmsMode,
             setIsSosOpen(false);
             setIsAnalysisOpen(false);
         }
-    }, [isSidebarOpen]);
+        // Tidak perlu dependensi currentPath karena `route().current()` sudah reaktif
+    }, [isSidebarOpen, isAdminAnalysisActive, isReportsActive, isDashboardActive]);
+
+    // Fungsi cek role
+    const hasRole = (roleName) => user?.role === roleName;
+
+    // ==========================================================
+    // == PERUBAHAN LOGIKA KONDISIONAL TAMPILAN SIDEBAR ==
+    // ==========================================================
+
+    // Menentukan apakah sidebar harus tampil seperti user biasa
+    // Kondisi: Bukan superadmin DAN (Bukan admin ATAU (admin TAPI TIDAK dalam CMS Mode))
+    const showUserSidebar = !hasRole('superadmin') && (!hasRole('admin') || (hasRole('admin') && !isCmsMode));
+
+    // Menentukan apakah sidebar harus tampil seperti Admin CMS Mode
+    // Kondisi: Admin DAN dalam CMS Mode
+    const showAdminCmsSidebar = hasRole('admin') && isCmsMode;
+
+    // ==========================================================
 
     return (
         <div className={`flex flex-col bg-white h-screen fixed shadow-lg z-30 transition-transform duration-300 ease-in-out
@@ -215,16 +243,32 @@ export default function Sidebar({ user, isSidebarOpen, toggleSidebar, isCmsMode,
 
             <nav className="flex-grow pt-4 overflow-y-auto overflow-x-hidden">
 
-                {user.role === 'superadmin' ? (
-                    <NavLink
-                        href={route('users.index')}
-                        active={route().current('users.*')}
-                        icon={<FiUsers size={22} />}
-                        isSidebarOpen={isSidebarOpen}
-                    >
-                        User Management
-                    </NavLink>
-                ) : isCmsMode ? (
+                {/* === TAMPILAN UNTUK SUPER ADMIN === */}
+                {hasRole('superadmin') && (
+                    <>
+                        <NavLink
+                            href={route('superadmin.users.index')} // <-- Pastikan nama route ini benar
+                            active={isUserManagementActive}
+                            icon={<FiUsers size={22} />}
+                            isSidebarOpen={isSidebarOpen}
+                        >
+                            User Management
+                        </NavLink>
+                        {/* [BARU] Menu Rollback */}
+                        <NavLink
+                            href={route('superadmin.rollback.show')} // <-- Pastikan nama route ini benar
+                            active={isRollbackActive}
+                            icon={<MdHistory size={22} />} // <-- Ikon baru
+                            isSidebarOpen={isSidebarOpen}
+                        >
+                            Rollback Batch
+                        </NavLink>
+                        {/* Tambahkan menu superadmin lain di sini jika perlu */}
+                    </>
+                )}
+
+                {/* === TAMPILAN UNTUK ADMIN (CMS MODE) === */}
+                {showAdminCmsSidebar && ( // <-- Menggunakan variabel baru
                     <>
                         <div className="relative">
                             <button onClick={() => isSidebarOpen && setIsAnalysisOpen(!isAnalysisOpen)} className={`w-full flex items-center py-4 text-gray-600 hover:bg-gray-100 transition duration-300 text-left ${isSidebarOpen ? 'px-6' : 'justify-center'} ${isAdminAnalysisActive ? 'bg-gray-200 text-gray-800 font-bold' : ''}`}>
@@ -235,12 +279,16 @@ export default function Sidebar({ user, isSidebarOpen, toggleSidebar, isCmsMode,
                             {isSidebarOpen && isAnalysisOpen && (
                                 <div className="pl-12 pr-4 py-2 flex flex-col space-y-1">
                                     <Link href={route('admin.analysisDigitalProduct.index')} className={`block px-4 py-2 text-sm rounded-md ${route().current('admin.analysisDigitalProduct.index') ? 'bg-blue-100 text-blue-700 font-semibold' : 'hover:bg-gray-100'}`}>Analisis Report Digital Product</Link>
-                                    <Link href={route('admin.analysisSOS.index')} className={`block px-4 py-2 text-sm text-gray-400 cursor-not-allowed rounded-md ${route().current('admin.analysisSOS.index') ? 'bg-blue-100 text-blue-700 font-semibold' : 'hover:bg-gray-100'}`}>Analisis Report SOS</Link>
+                                    <Link href={route('admin.analysisSOS.index')} className={`block px-4 py-2 text-sm rounded-md ${route().current('admin.analysisSOS.index') ? 'bg-blue-100 text-blue-700 font-semibold' : 'hover:bg-gray-100'}`}>Analisis Report SOS</Link>
                                 </div>
                             )}
                         </div>
+                        {/* Tambahkan menu admin lain di sini jika perlu */}
                     </>
-                ) : (
+                )}
+
+                {/* === TAMPILAN UNTUK USER BIASA (DAN ADMIN NON-CMS MODE) === */}
+                {showUserSidebar && ( // <-- Menggunakan variabel baru
                     <>
                         <div className="relative">
                             <button onClick={() => isSidebarOpen && setIsDashboardOpen(!isDashboardOpen)} className={`w-full flex items-center py-4 text-gray-600 hover:bg-gray-100 transition duration-300 text-left ${isSidebarOpen ? 'px-6' : 'justify-center'} ${isDashboardActive ? 'bg-gray-200 text-gray-800 font-bold' : ''}`}>
@@ -292,6 +340,7 @@ export default function Sidebar({ user, isSidebarOpen, toggleSidebar, isCmsMode,
                         </div>
                     </>
                 )}
+
             </nav>
 
             <UserProfile user={user} isSidebarOpen={isSidebarOpen} onLogout={onLogout} />

@@ -3,16 +3,16 @@
 namespace App\Jobs;
 
 use App\Imports\DocumentDataImport;
-use Carbon\Carbon;
 use Illuminate\Bus\Batchable;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
-use Maatwebsite\Excel\Facades\Excel; // PENTING: Impor class Carbon untuk tanggal
+use Maatwebsite\Excel\Facades\Excel; // <-- TAMBAHKAN INI
 
 class ImportAndProcessDocument implements ShouldQueue
 {
@@ -49,11 +49,17 @@ class ImportAndProcessDocument implements ShouldQueue
             }
 
             // LANGKAH 2: JALANKAN PROSES IMPORT UTAMA DENGAN CHUNKING
-            // Class DocumentDataImport sekarang akan menangani semuanya
             Log::info("Batch [{$currentBatchId}]: Menjalankan proses import utama dengan chunking.");
             Excel::import(new DocumentDataImport($currentBatchId, $isFreshImport), $this->path);
 
             // LANGKAH 3 (CANCEL) HANYA JIKA BUKAN IMPORT BARU
+            // Cek sekali lagi JIKA user membatalkan TEPAT SETELAH import selesai
+            if ($this->batch()->cancelled()) {
+                Log::warning("Batch [{$currentBatchId}]: Pembatalan terdeteksi setelah Excel::import selesai. Melewatkan logika pembatalan order.");
+
+                return;
+            }
+
             if (!$isFreshImport) {
                 Log::info("Batch [{$currentBatchId}]: Menjalankan logika pembatalan order.");
                 DB::transaction(function () use ($currentBatchId) {
@@ -75,7 +81,7 @@ class ImportAndProcessDocument implements ShouldQueue
                                 'customer_name' => $order->customer_name,
                                 'nama_witel' => $order->nama_witel,
                                 'status_lama' => $order->status_wfm,
-                                'status_baru' => 'cancel',
+                                'status_baru' => 'cancel', // Anda mungkin ingin 'done close cancel'
                                 'sumber_update' => 'Upload Data Mentah Cancel',
                                 'created_at' => now(),
                                 'updated_at' => now(),
@@ -86,13 +92,14 @@ class ImportAndProcessDocument implements ShouldQueue
                         // Update status di tabel utama
                         DB::table('document_data')
                             ->whereIn('order_id', $ordersToCancel->pluck('order_id'))
-                            ->update(['status_wfm' => 'cancel']);
+                            ->update(['status_wfm' => 'done close cancel']); // Sesuaikan status ini
                     }
                 });
             }
 
             Log::info("Batch [{$currentBatchId}]: Job ImportAndProcessDocument SELESAI.");
         } catch (\Throwable $e) {
+            // Ini akan memanggil method failed() di bawah
             $this->fail($e);
         }
     }
@@ -100,12 +107,31 @@ class ImportAndProcessDocument implements ShouldQueue
     public function failed(\Throwable $exception): void
     {
         $batchId = $this->batch() ? $this->batch()->id : 'N/A';
+
+        // =======================================================
+        // == LOGIKA BARU UNTUK MENANGANI PEMBATALAN ==
+        // =======================================================
+        // Periksa apakah exception ini adalah pembatalan yang disengaja
+        if (str_contains($exception->getMessage(), 'Import cancelled by user')) {
+            // Catat sebagai PERINGATAN (Warning), bukan ERROR
+            Log::warning("Batch [{$batchId}]: Job dihentikan secara paksa oleh user.");
+            // Hapus cache progress agar progress bar di frontend hilang
+            Cache::forget('import_progress_'.$batchId);
+
+            // Jangan jalankan sisa logika 'failed'. Cukup berhenti.
+            return;
+        }
+        // =======================================================
+        // =======================================================
+
+        // Jika ini adalah error lain yang sebenarnya, log seperti biasa.
         Log::error("Batch [{$batchId}]: Job ImportAndProcessDocument GAGAL.");
         Log::error($exception->getMessage());
         // Batasi panjang trace agar log tidak terlalu besar
         Log::error(substr($exception->getTraceAsString(), 0, 2000));
     }
 
+    // Fungsi calculateProductPrice tidak perlu diubah, biarkan saja
     private function calculateProductPrice(string $productName, DocumentData $order): int
     {
         $witel = strtoupper(trim($order->nama_witel));

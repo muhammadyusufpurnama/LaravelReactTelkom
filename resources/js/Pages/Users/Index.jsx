@@ -19,7 +19,7 @@ export default function Index({ auth, users }) {
 
                     {/* Tombol "Add User" dipindah ke sini */}
                     <div className="flex justify-end mb-4">
-                        <Link href={route('users.create')} className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2 px-4 rounded">
+                        <Link href={route('superadmin.users.create')} className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2 px-4 rounded">
                             Add User
                         </Link>
                     </div>
@@ -56,11 +56,11 @@ export default function Index({ auth, users }) {
                                         <td className="px-6 py-4 whitespace-nowrap">{user.email}</td>
                                         <td className="px-6 py-4 whitespace-nowrap">{user.role}</td>
                                         <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                                            <Link href={route('users.edit', user.id)} className="text-indigo-600 hover:text-indigo-900 mr-4">
+                                            <Link href={route('superadmin.users.edit', user.id)} className="text-indigo-600 hover:text-indigo-900 mr-4">
                                                 Edit
                                             </Link>
                                             <Link
-                                                href={route('users.destroy', user.id)}
+                                                href={route('superadmin.users.destroy', user.id)}
                                                 method="delete"
                                                 as="button"
                                                 className="text-red-600 hover:text-red-900"

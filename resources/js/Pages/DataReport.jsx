@@ -199,40 +199,34 @@ export default function DataReport({ smeReportData, legsReportData, inProgressDa
 
     // Fungsi untuk Ekspor Data Report Utama
     const handleExportDataReport = () => {
-        const form = document.createElement("form");
-        form.method = "POST";
-        form.action = route('data-report.export');
-        form.style.display = "none";
+        // 1. Siapkan parameter yang akan dikirim
+        const params = new URLSearchParams({
+            month: filters.month || new Date().toISOString().slice(0, 7),
+            // Anda tidak perlu lagi mengirim 'segment' karena controller akan mengambil keduanya
+        });
 
-        const csrfToken = document.querySelector('meta[name="csrf-token"]').getAttribute("content");
+        // 2. Buat URL lengkap ke rute ekspor
+        const exportUrl = route('data-report.export') + '?' + params.toString();
 
-        createHiddenInput(form, "_token", csrfToken);
-        createHiddenInput(form, "month", filters.month || new Date().toISOString().slice(0, 7));
-        createHiddenInput(form, "segment", filters.segment || 'SME'); // Wajib ada untuk validasi
-
-        document.body.appendChild(form);
-        form.submit();
-        document.body.removeChild(form);
+        // 3. Arahkan browser ke URL tersebut untuk memicu download
+        window.location.href = exportUrl;
     };
 
     const handleExportInProgress = () => {
-        const form = document.createElement("form");
-        form.method = "POST";
-        form.action = route('data-report.exportInProgress');
-        form.style.display = "none";
+        // Siapkan parameter berdasarkan filter yang aktif di halaman
+        const params = new URLSearchParams({
+            year: filters.year || new Date().getFullYear(),
+        });
 
-        const csrfToken = document.querySelector('meta[name="csrf-token"]').getAttribute("content");
-
-        createHiddenInput(form, "_token", csrfToken);
-        createHiddenInput(form, "segment", filters.segment || 'SME');
-        createHiddenInput(form, "month", filters.month || new Date().toISOString().slice(0, 7));
+        // Tambahkan witel hanya jika dipilih
         if (filters.witel) {
-            createHiddenInput(form, "witel", filters.witel);
+            params.append('witel', filters.witel);
         }
 
-        document.body.appendChild(form);
-        form.submit();
-        document.body.removeChild(form);
+        // Buat URL lengkap dan arahkan browser ke sana
+        const exportUrl = route('data-report.exportInProgress') + '?' + params.toString();
+
+        window.location.href = exportUrl;
     };
 
     return (

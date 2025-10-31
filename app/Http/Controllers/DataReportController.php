@@ -43,7 +43,6 @@ class DataReportController extends Controller
         $inProgressData = DocumentData::query()
             ->select('order_id', 'milestone', 'order_status_n', 'product', 'nama_witel', 'customer_name', 'order_created_date')
             ->where('status_wfm', 'in progress')
-            ->where('segment', 'SME') // Anda bisa membuat ini dinamis jika perlu
             ->whereYear('order_created_date', $selectedYear)
             ->when($selectedWitel, fn ($q, $w) => $q->where('nama_witel', $w))
             ->orderBy('order_created_date', 'desc')
@@ -72,38 +71,35 @@ class DataReportController extends Controller
     {
         $validated = $request->validate([
             'month' => 'required|date_format:Y-m',
-            'segment' => 'required|in:SME,LEGS', // Segment tetap divalidasi
+            // 'segment' tidak lagi diperlukan di validasi karena kita ambil keduanya
         ]);
 
         $periodInput = $validated['month'];
         $reportPeriod = Carbon::parse($periodInput)->startOfMonth();
 
         // 1. Ambil data untuk KEDUA segmen
-        $reportDataLegs = $this->getReportDataForSegment('LEGS', $reportPeriod);
         $reportDataSme = $this->getReportDataForSegment('SME', $reportPeriod);
+        $reportDataLegs = $this->getReportDataForSegment('LEGS', $reportPeriod);
 
-        // 2. Ambil Konfigurasi Dinamis untuk SME (sesuai Blade Anda)
-        $pageName = 'analysis_digital_sme';
-        $userConfigRecord = UserTableConfiguration::where('page_name', $pageName)->first();
-        if ($userConfigRecord) {
-            $tableConfig = $userConfigRecord->configuration;
-        } else {
-            // Jika tidak ada di DB, gunakan template default dari AnalysisDigitalProduct.jsx
-            // Anda perlu menyalin template ini ke dalam controller jika diperlukan sebagai fallback
-            $tableConfig = []; // Ganti dengan template default jika perlu
-        }
+        // 2. Ambil Konfigurasi Dinamis HANYA untuk SME
+        // Perhatikan: Konfigurasi LEGS sudah di-hardcode di dalam datareport.blade.php Anda,
+        // jadi kita hanya perlu mengambil yang SME dari database.
+        $smeConfigRecord = UserTableConfiguration::where('page_name', 'analysis_digital_sme')->first();
+
+        // Gunakan template fallback jika config SME tidak ditemukan di DB
+        $tableConfigSme = $smeConfigRecord ? $smeConfigRecord->configuration : $this->getSmeTemplate();
 
         // 3. Hitung 'details' untuk KEDUA segmen
         $detailsSme = $this->calculateDetails($reportDataSme);
         $detailsLegs = $this->calculateDetails($reportDataLegs);
 
-        // 4. Siapkan nama file dan panggil Export Class yang sudah ada
+        // 4. Siapkan nama file dan panggil Export Class
         $fileName = 'Data_Report_All_Segments_'.$reportPeriod->format('F_Y').'.xlsx';
 
         return Excel::download(new DataReportExport(
             $reportDataLegs,
             $reportDataSme,
-            $tableConfig, // Konfigurasi dinamis untuk SME
+            $tableConfigSme, // Hanya config SME yang dinamis
             $detailsLegs,
             $detailsSme,
             $periodInput
@@ -260,22 +256,20 @@ class DataReportController extends Controller
 
     public function exportInProgress(Request $request)
     {
+        // 1. Validasi diubah: 'segment' dihapus, 'month' diganti 'year'
         $validated = $request->validate([
-            'segment' => 'required|in:SME,LEGS',
-            'month' => 'required|date_format:Y-m', // Filter utama adalah bulan
+            'year' => 'required|integer|digits:4', // Filter utama sekarang adalah tahun
             'witel' => 'nullable|string',
         ]);
 
-        $segment = $validated['segment'];
-        $reportPeriod = Carbon::parse($validated['month']);
+        $year = $validated['year'];
         $witel = $validated['witel'] ?? null;
 
-        // 1. Jalankan query yang SAMA PERSIS dengan di metode index()
+        // 2. Query diubah: klausa where('segment', ...) dihapus
         $inProgressData = DocumentData::query()
             ->where('status_wfm', 'in progress')
-            ->where('segment', $segment)
-            ->whereYear('order_date', $reportPeriod->year)
-            ->whereMonth('order_date', $reportPeriod->month)
+            // ->where('segment', $segment) // <-- BARIS INI DIHAPUS untuk mengambil semua segmen
+            ->whereYear('order_created_date', $year) // Menggunakan order_created_date agar konsisten dengan tabel di halaman
             ->when($witel, function ($query, $witelValue) {
                 return $query->where('nama_witel', $witelValue);
             })
@@ -286,17 +280,18 @@ class DataReportController extends Controller
                 'customer_name',
                 'milestone',
                 'order_created_date',
-                'segment',
+                'segment', // Kolom segment tetap diambil untuk ditampilkan di Excel
                 'telda'
             )
             ->orderBy('order_created_date', 'desc')
-            ->get(); // Gunakan ->get() untuk mengambil semua data yang cocok
+            ->get();
 
-        // 2. Buat nama file yang dinamis
-        $witelName = $witel ? str_replace(' ', '_', $witel) : 'ALL';
-        $fileName = "in_progress_{$segment}_{$witelName}_{$reportPeriod->format('Y-m')}.xlsx";
+        // 3. Nama file diubah agar lebih relevan
+        $witelName = $witel ? str_replace(' ', '_', $witel) : 'ALL_WITEL';
+        $fileName = "in_progress_ALL_SEGMENTS_{$witelName}_{$year}.xlsx";
 
-        // 3. Panggil class export dengan data yang sudah difilter
+        // 4. Panggil class export dengan data yang sudah difilter
+        // Pastikan InProgressExport class Anda bisa menangani data ini
         return Excel::download(new InProgressExport($inProgressData, $witel), $fileName);
     }
 

@@ -18,7 +18,7 @@
             'bg-orange-300' => '#FDBA74',
             'bg-green-300' => '#86EFAC',
         ];
-        return $colors[$class] ?? '#808080';
+        return $colors[$class] ?? '#60A5FA';
     }
 
     function getGroupColspan($group)
@@ -62,6 +62,7 @@
             'groupTitle' => 'In Progress',
             'groupClass' => 'bg-blue-600',
             'columnClass' => 'bg-blue-400',
+            'subColumnClass' => 'bg-blue-400',
             'columns' => [
                 ['key' => 'in_progress_n', 'title' => 'N'],
                 ['key' => 'in_progress_o', 'title' => 'O'],
@@ -110,8 +111,8 @@
         ],
         [
             'groupTitle' => 'Grand Total',
-            'groupClass' => 'bg-purple-600',
-            'columnClass' => 'bg-purple-500',
+            'groupClass' => 'bg-gray-600',
+            'columnClass' => 'bg-gray-500',
             'columns' => [
                 [
                     'key' => 'grand_total_realisasi_legs',
@@ -337,7 +338,7 @@
                 @foreach ($group['columns'] as $col)
                     <th colspan="{{ count($col['subColumns'] ?? [1]) }}"
                         rowspan="{{ isset($col['subColumns']) ? 1 : 2 }}"
-                        style="vertical-align: middle; text-align: center; font-weight: bold; border: 1px solid #000; background-color: {{ tailwindToHex($group['columnClass'] ?? '') }}; color: #FFFFFF;">
+                        style="vertical-align: middle; text-align: center; font-weight: bold; border: 1px solid #000; background-color: {{ tailwindToHex(trim($group['columnClass'] ?? '')) }}; color: #FFFFFF;">
                         {{ $col['title'] }}</th>
                 @endforeach
             @endforeach

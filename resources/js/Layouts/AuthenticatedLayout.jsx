@@ -15,27 +15,22 @@ function usePrevious(value) {
 }
 
 export default function AuthenticatedLayout({ header, children }) {
-    const { auth, component } = usePage().props; // [FIX 1] Ambil nama komponen saat ini
+    const { auth } = usePage().props;
     const user = auth?.user;
 
     const isDesktop = () => window.innerWidth >= 1024;
-
     const [isSidebarOpen, setIsSidebarOpen] = useState(isDesktop());
     const toggleSidebar = () => setIsSidebarOpen(prevState => !prevState);
 
     useEffect(() => {
         const handleResize = () => {
-            // Jika layar berubah jadi desktop, buka sidebar.
-            // Jika berubah jadi mobile, tutup sidebar.
             if (isDesktop()) {
                 setIsSidebarOpen(true);
             } else {
                 setIsSidebarOpen(false);
             }
         };
-
         window.addEventListener('resize', handleResize);
-        // Cleanup listener saat komponen dibongkar
         return () => window.removeEventListener('resize', handleResize);
     }, []);
 
@@ -44,18 +39,10 @@ export default function AuthenticatedLayout({ header, children }) {
     });
     const prevIsCmsMode = usePrevious(isCmsMode);
 
-    const handleLogout = () => {
-        // Logika ini sekarang akan dijalankan dari komponen induk
-        localStorage.setItem('isCmsMode', 'false');
-        console.log('CMS mode set to false from Layout. Logging out...');
-        router.post(route('logout'));
-    };
-
     useEffect(() => {
         localStorage.setItem('isCmsMode', isCmsMode);
     }, [isCmsMode]);
 
-    // Efek untuk navigasi saat mode di-toggle (TETAP SAMA)
     useEffect(() => {
         if (prevIsCmsMode !== undefined && prevIsCmsMode !== isCmsMode) {
             if (isCmsMode) {
@@ -65,6 +52,35 @@ export default function AuthenticatedLayout({ header, children }) {
             }
         }
     }, [isCmsMode, prevIsCmsMode]);
+
+    // ==========================================================
+    // == FUNGSI LOGOUT YANG SUDAH DIPERBAIKI ==
+    // ==========================================================
+    const handleLogout = () => {
+        // Cek jika user adalah admin dan sedang dalam CMS mode
+        if (user?.role === 'admin' && isCmsMode) {
+            // Aksi 1: Kirim request ke server untuk keluar dari CMS Mode.
+            // Pastikan Anda punya rute bernama 'cms.exit' di routes/web.php
+            router.post(route('cms.exit'), {}, {
+                preserveScroll: true,
+                onSuccess: () => {
+                    // Aksi 2 (jika berhasil): Hapus localStorage dan lakukan logout.
+                    localStorage.setItem('isCmsMode', 'false');
+                    router.post(route('logout'));
+                },
+                onError: (errors) => {
+                    // Jika gagal, tetap paksa logout demi keamanan.
+                    console.error("Gagal keluar dari CMS Mode, melanjutkan logout...", errors);
+                    localStorage.setItem('isCmsMode', 'false');
+                    router.post(route('logout'));
+                }
+            });
+        } else {
+            // Jika bukan admin dalam CMS mode, langsung hapus localStorage dan logout.
+            localStorage.setItem('isCmsMode', 'false');
+            router.post(route('logout'));
+        }
+    };
 
     const toggleCmsMode = () => {
         setIsCmsMode(prevMode => !prevMode);
@@ -89,11 +105,9 @@ export default function AuthenticatedLayout({ header, children }) {
                 isSidebarOpen={isSidebarOpen}
                 toggleSidebar={toggleSidebar}
                 isCmsMode={isCmsMode}
-                onLogout={handleLogout}
+                onLogout={handleLogout} // Prop ini sekarang menjalankan logika yang benar
             />
 
-            {/* Overlay Gelap untuk Mobile */}
-            {/* Muncul saat sidebar terbuka DAN layar BUKAN desktop */}
             {isSidebarOpen && !isDesktop() && (
                 <div
                     onClick={toggleSidebar}
@@ -102,15 +116,13 @@ export default function AuthenticatedLayout({ header, children }) {
                 ></div>
             )}
 
-            {/* Konten utama tidak lagi diberi margin di mobile */}
-            {/* Margin hanya berlaku di layar besar (lg) */}
             <div className={`transition-all duration-300 ease-in-out ${isSidebarOpen ? 'lg:ml-64' : 'lg:ml-20'}`}>
                 <Header
                     user={user}
                     pageHeader={header}
                     isCmsMode={isCmsMode}
                     toggleCmsMode={toggleCmsMode}
-                    toggleSidebar={toggleSidebar} // <-- Prop ini diteruskan ke Header
+                    toggleSidebar={toggleSidebar}
                 />
 
                 <main className="flex-1 overflow-y-auto p-4 sm:p-6 lg:p-8">

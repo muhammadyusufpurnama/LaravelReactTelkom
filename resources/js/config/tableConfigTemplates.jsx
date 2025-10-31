@@ -1,6 +1,7 @@
-// resources/js/config/tableConfigTemplates.js
+// ===================================================================
+// Konfigurasi untuk Halaman AnalysisDigitalProduct
+// ===================================================================
 
-// 'export' membuat variabel ini bisa diimpor dan digunakan di file lain.
 export const smeTableConfigTemplate = [
     // In Progress
     {
@@ -249,3 +250,50 @@ export const legsTableConfigTemplate = [
         ],
     },
 ];
+
+
+// ===================================================================
+// Konfigurasi untuk Halaman AnalysisSOS
+// ===================================================================
+const fullSosColumnsTemplate = [
+    { Header: 'ID', accessor: 'id' },
+    { Header: 'NIPNAS', accessor: 'nipnas' },
+    { Header: 'Standard Name', accessor: 'standard_name' },
+    { Header: 'Order ID', accessor: 'order_id' },
+    { Header: 'Order Subtype', accessor: 'order_subtype' },
+    { Header: 'Order Description', accessor: 'order_description' },
+    { Header: 'Segmen', accessor: 'segmen' },
+    { Header: 'Sub Segmen', accessor: 'sub_segmen' },
+    { Header: 'Cust City', accessor: 'cust_city' },
+    { Header: 'Cust Witel', accessor: 'cust_witel' },
+    { Header: 'Serv City', accessor: 'serv_city' },
+    { Header: 'Service Witel', accessor: 'service_witel' },
+    { Header: 'Bill Witel', accessor: 'bill_witel' },
+    { Header: 'Product Name', accessor: 'li_product_name' },
+    { Header: 'Bill Date', accessor: 'li_billdate', type: 'date' },
+    { Header: 'Milestone', accessor: 'li_milestone' },
+    { Header: 'Kategori', accessor: 'kategori' },
+    { Header: 'Status', accessor: 'li_status' },
+    { Header: 'Status Date', accessor: 'li_status_date', type: 'date' },
+    { Header: 'Is Termin', accessor: 'is_termin' },
+    { Header: 'Biaya Pasang', accessor: 'biaya_pasang', type: 'currency' },
+    { Header: 'Harga Bulanan', accessor: 'hrg_bulanan', type: 'currency' },
+    { Header: 'Revenue', accessor: 'revenue', type: 'currency' },
+    { Header: 'Order Created Date', accessor: 'order_created_date', type: 'date' },
+    { Header: 'Agree Type', accessor: 'agree_type' },
+    { Header: 'Agree Start Date', accessor: 'agree_start_date', type: 'date' },
+    { Header: 'Agree End Date', accessor: 'agree_end_date', type: 'date' },
+    { Header: 'Lama Kontrak (Hari)', accessor: 'lama_kontrak_hari' },
+    { Header: 'Amortisasi', accessor: 'amortisasi' },
+    { Header: 'Action CD', accessor: 'action_cd' },
+    { Header: 'Kategori Umur', accessor: 'kategori_umur' },
+    { Header: 'Umur Order (Hari)', accessor: 'umur_order' },
+    { Header: 'Created At', accessor: 'created_at', type: 'date' },
+    { Header: 'Updated At', accessor: 'updated_at', type: 'date' },
+];
+
+// -- [PERUBAHAN] Menggunakan template master untuk semua tabel detail --
+export const provideOrderColumnsTemplate = fullSosColumnsTemplate;
+export const inProcessColumnsTemplate = fullSosColumnsTemplate;
+export const readyToBillColumnsTemplate = fullSosColumnsTemplate;
+export const provCompleteColumnsTemplate = fullSosColumnsTemplate;

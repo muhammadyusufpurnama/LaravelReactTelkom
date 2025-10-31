@@ -60,4 +60,16 @@ class ProfileController extends Controller
 
         return Redirect::to('/');
     }
+
+    /**
+     * Keluar dari CMS Mode dengan menghapus session server.
+     * Ini adalah tambahan yang logis dan aman.
+     */
+    public function exitCmsMode(Request $request): RedirectResponse
+    {
+        $request->session()->forget('is_cms_mode');
+
+        // Inertia akan menangani respons ini dengan benar
+        return back();
+    }
 }
