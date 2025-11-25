@@ -10,6 +10,7 @@ use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 use Maatwebsite\Excel\Facades\Excel;
@@ -35,28 +36,26 @@ class ProcessJTImport implements ShouldQueue
         $currentBatchId = $this->batch()->id;
         $cacheKey = 'import_progress_' . $currentBatchId;
 
-        // 1. Reset Progress ke 0% agar Frontend mulai dari awal
+        // 1. Reset Progress
         Cache::put($cacheKey, 0, now()->addHour());
 
         try {
             $filePath = Storage::disk('local')->path($this->path);
-
-            // Hitung total baris untuk akurasi persentase
             $totalRows = $this->countCsvLines($filePath);
-
-            // Update sedikit (5%) agar user melihat ada pergerakan
             Cache::put($cacheKey, 5, now()->addHour());
 
-            // 2. Jalankan Import (Synchronous / Tidak di-queue lagi)
-            // Ini akan memblokir kode di sini sampai import selesai,
-            // tapi Import Class akan mengupdate cache secara berkala.
+            // --- BAGIAN PENTING: TRUNCATE ---
+            // Kosongkan tabel SATU KALI sebelum import dimulai
+            DB::table('spmk_mom')->truncate();
+            // --------------------------------
+
+            // 2. Jalankan Import
             Excel::import(
                 new JtDataImport($currentBatchId, $totalRows),
                 $this->path
             );
 
-            // 3. Selesai (100%)
-            // Frontend akan mendeteksi ini dan melakukan refresh tabel otomatis
+            // 3. Selesai
             Cache::put($cacheKey, 100, now()->addHour());
 
         } catch (\Throwable $e) {
