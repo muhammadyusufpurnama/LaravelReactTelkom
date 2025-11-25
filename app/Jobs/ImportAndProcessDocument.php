@@ -2,7 +2,6 @@
 
 namespace App\Jobs;
 
-use App\Imports\DocumentDataImport;
 use Illuminate\Bus\Batchable;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -12,17 +11,18 @@ use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
-use Maatwebsite\Excel\Facades\Excel; // <-- TAMBAHKAN INI
+use Illuminate\Support\Facades\Storage;
+use Carbon\Carbon;
+use PhpOffice\PhpSpreadsheet\IOFactory;
+use PhpOffice\PhpSpreadsheet\Shared\Date;
+use OpenSpout\Reader\Common\Creator\ReaderEntityFactory;
+use OpenSpout\Writer\Common\Creator\WriterEntityFactory;
 
 class ImportAndProcessDocument implements ShouldQueue
 {
-    use Dispatchable;
-    use InteractsWithQueue;
-    use Queueable;
-    use SerializesModels;
-    use Batchable;
+    use Batchable, Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
-    public $timeout = 1200; // 20 menit timeout
+    public $timeout = 1200;
     protected $path;
 
     public function __construct(string $path)
@@ -32,130 +32,315 @@ class ImportAndProcessDocument implements ShouldQueue
 
     public function handle(): void
     {
-        if ($this->batch()->cancelled()) {
-            return;
-        }
+        if ($this->batch() && $this->batch()->cancelled()) return;
 
-        $currentBatchId = $this->batch()->id;
-        Log::info("Batch [{$currentBatchId}]: Job ImportAndProcessDocument DIMULAI.");
+        $batchId = $this->batch() ? $this->batch()->id : uniqid();
+        Log::info("Batch [{$batchId}]: Job Import dimulai.");
+        Cache::put('import_progress_'.$batchId, 5, now()->addHour());
+
+        $originalFilePath = Storage::path($this->path);
+        $extension = strtolower(pathinfo($originalFilePath, PATHINFO_EXTENSION));
+        $csvPath = $originalFilePath;
+        $isConverted = false;
 
         try {
-            // DETEKSI IMPORT BARU
-            $isFreshImport = DB::table('document_data')->doesntExist();
+            // 1. KONVERSI EXCEL KE CSV
+            if (in_array($extension, ['xlsx', 'xls'])) {
+                Log::info("Batch [{$batchId}]: Convert Excel ke CSV (Spout Mode)...");
 
-            // LANGKAH 1: KOSONGKAN TABEL TEMP (jika bukan import baru)
-            if (!$isFreshImport) {
-                DB::table('temp_upload_data')->truncate();
-            }
+                $tempCsvFile = tempnam(sys_get_temp_dir(), 'imp_') . '.csv';
 
-            // LANGKAH 2: JALANKAN PROSES IMPORT UTAMA DENGAN CHUNKING
-            Log::info("Batch [{$currentBatchId}]: Menjalankan proses import utama dengan chunking.");
-            Excel::import(new DocumentDataImport($currentBatchId, $isFreshImport), $this->path);
+                // Buka Reader (Excel)
+                $reader = ReaderEntityFactory::createReaderFromFile($originalFilePath);
+                $reader->open($originalFilePath);
 
-            // LANGKAH 3 (CANCEL) HANYA JIKA BUKAN IMPORT BARU
-            // Cek sekali lagi JIKA user membatalkan TEPAT SETELAH import selesai
-            if ($this->batch()->cancelled()) {
-                Log::warning("Batch [{$currentBatchId}]: Pembatalan terdeteksi setelah Excel::import selesai. Melewatkan logika pembatalan order.");
+                // Buka Writer (CSV)
+                $writer = WriterEntityFactory::createWriterToFile($tempCsvFile);
+                $writer->openToFile($tempCsvFile);
 
-                return;
-            }
-
-            if (!$isFreshImport) {
-                Log::info("Batch [{$currentBatchId}]: Menjalankan logika pembatalan order.");
-                DB::transaction(function () use ($currentBatchId) {
-                    // Ambil order ID yang ada di database tapi TIDAK ADA di file yang baru diupload
-                    $ordersToCancel = DB::table('document_data as d')
-                        ->leftJoin('temp_upload_data as t', 'd.order_id', '=', 't.order_id')
-                        ->where('d.status_wfm', 'in progress')
-                        ->whereNull('t.order_id')
-                        ->where('d.batch_id', '!=', $currentBatchId)
-                        ->select('d.order_id', 'd.product', 'd.customer_name', 'd.nama_witel', 'd.status_wfm')
-                        ->get();
-
-                    if ($ordersToCancel->isNotEmpty()) {
-                        // Buat log untuk setiap order yang di-cancel
-                        $logs = $ordersToCancel->map(function ($order) {
-                            return [
-                                'order_id' => $order->order_id,
-                                'product_name' => $order->product,
-                                'customer_name' => $order->customer_name,
-                                'nama_witel' => $order->nama_witel,
-                                'status_lama' => $order->status_wfm,
-                                'status_baru' => 'cancel', // Anda mungkin ingin 'done close cancel'
-                                'sumber_update' => 'Upload Data Mentah Cancel',
-                                'created_at' => now(),
-                                'updated_at' => now(),
-                            ];
-                        })->all();
-                        DB::table('update_logs')->insert($logs);
-
-                        // Update status di tabel utama
-                        DB::table('document_data')
-                            ->whereIn('order_id', $ordersToCancel->pluck('order_id'))
-                            ->update(['status_wfm' => 'done close cancel']); // Sesuaikan status ini
+                // Streaming baris per baris (RAM tetap rendah)
+                foreach ($reader->getSheetIterator() as $sheet) {
+                    foreach ($sheet->getRowIterator() as $row) {
+                        // Tulis baris ke CSV (mengambil array cell)
+                        $cells = $row->getCells();
+                        $rowData = [];
+                        foreach ($cells as $cell) {
+                            $rowData[] = $cell->getValue();
+                        }
+                        $writer->addRow(WriterEntityFactory::createRowFromArray($rowData));
                     }
-                });
+                    break; // Hanya proses sheet pertama
+                }
+
+                $writer->close();
+                $reader->close();
+
+                $csvPath = $tempCsvFile;
+                $isConverted = true;
             }
 
-            Log::info("Batch [{$currentBatchId}]: Job ImportAndProcessDocument SELESAI.");
+            // 2. BACA CSV
+            $handle = fopen($csvPath, 'r');
+            if (!$handle) throw new \Exception("Gagal membuka file CSV.");
+
+            // 3. MAPPING HEADER
+            $headerLine = fgets($handle);
+            // Hapus BOM dan karakter aneh
+            $headerLine = trim(preg_replace('/\x{FEFF}/u', '', $headerLine));
+            $header = str_getcsv($headerLine, ',');
+
+            // Normalisasi header: huruf kecil & hilangkan spasi kiri/kanan
+            $header = array_map(fn($h) => strtolower(trim($h)), $header);
+            $idx = array_flip($header);
+
+            // Cek Kolom Wajib (Order Id)
+            $idxOrderId = $idx['order id'] ?? $idx['order_id'] ?? null;
+            if (is_null($idxOrderId)) throw new \Exception("Kolom 'Order Id' tidak ditemukan di file.");
+
+            // 4. BERSIHKAN TEMP TABLES
+            DB::table('temp_upload_data')->truncate();
+            DB::table('temp_order_products')->truncate();
+
+            $batchData = [];
+            $batchProducts = [];
+            $processedRows = 0;
+
+            while (($row = fgetcsv($handle, 0, ',')) !== false) {
+                $processedRows++;
+                // Skip baris kosong atau header berulang
+                if (empty($row) || count($row) < 1) continue;
+
+                $rawOrderId = $row[$idxOrderId] ?? null;
+                if (!$rawOrderId || in_array(strtolower($rawOrderId), ['order id', 'order_id'])) continue;
+
+                // Logic SC ID (Sesuai file import lama)
+                $orderId = (strtoupper(substr($rawOrderId, 0, 2)) === 'SC') ? substr($rawOrderId, 2) : $rawOrderId;
+
+                // --- MAPPING DATA SESUAI HEADER EXCEL DAN LOGIKA LAMA ---
+
+                // 1. Product: Prioritaskan 'Product + Order Id', lalu 'Product'
+                // Di file import lama: $rowAsArray['product_order_id'] ?? $rowAsArray['product']
+                $rawProduct = $row[$idx['product + order id'] ?? $idx['product_order_id'] ?? -1]
+                              ?? $row[$idx['product'] ?? -1]
+                              ?? '';
+                $productNameFull = trim($rawProduct);
+
+                // 2. Witel & Layanan
+                $witel = trim($row[$idx['nama witel'] ?? $idx['nama_witel'] ?? -1] ?? '');
+                $layanan = trim($row[$idx['layanan'] ?? -1] ?? '');
+
+                // FILTER: Kidi, Mahir, Jateng (Sesuai file import lama)
+                if (str_contains(strtolower($productNameFull), 'kidi') || stripos($layanan, 'mahir') !== false) continue;
+                if (stripos($witel, 'JATENG') !== false) continue;
+
+                // 3. Pembersihan Nama Produk
+                $productValue = $productNameFull;
+                if (!empty($productNameFull)) {
+                     $productValue = str_ends_with($productNameFull, (string) $orderId)
+                        ? trim(substr($productNameFull, 0, -strlen((string) $orderId)))
+                        : trim(str_replace((string) $orderId, '', $productNameFull));
+                }
+
+                // 4. Segment (Mapping 'segmen_n' -> 'segment')
+                $segmentRaw = trim($row[$idx['segmen_n'] ?? -1] ?? '');
+                $segment = (in_array($segmentRaw, ['RBS', 'SME'])) ? 'SME' : 'LEGS';
+
+                // 5. Harga (Net Price)
+                $netPrice = 0;
+                $isTemplatePrice = 0;
+                $excelNetPrice = floatval(preg_replace('/[^0-9.]/', '', $row[$idx['net price'] ?? $idx['net_price'] ?? -1] ?? 0));
+
+                if ($excelNetPrice > 0) {
+                    $netPrice = $excelNetPrice;
+                } else {
+                    $netPrice = $this->calculateFastPrice($productValue, $segment, $witel);
+                    $isTemplatePrice = ($netPrice > 0) ? 1 : 0;
+                }
+
+                // 6. Status WFM & Milestone
+                $milestone = trim($row[$idx['milestone'] ?? -1] ?? '');
+                $statusWfm = 'in progress';
+                if (stripos($milestone, 'QC') !== false) {
+                    $statusWfm = '';
+                } elseif (in_array(strtolower($milestone), ['completed', 'complete', 'baso started', 'fulfill billing complete'])) {
+                    $statusWfm = 'done close bima';
+                }
+
+                // 7. Channel (Mapping 'channel' -> 'channel', hsi -> SC-One)
+                $rawChannel = trim($row[$idx['channel'] ?? -1] ?? '');
+                $channel = (strtolower($rawChannel) === 'hsi') ? 'SC-One' : $rawChannel;
+
+                // 8. Parsing Tanggal
+                $orderDate = $this->parseDateFast($row[$idx['order date'] ?? $idx['order_date'] ?? -1] ?? null);
+                $orderCreatedDate = $this->parseDateFast($row[$idx['order created date'] ?? $idx['order_created_date'] ?? -1] ?? null);
+
+                // --- SIAPKAN DATA UNTUK TABEL UTAMA (PARENT) ---
+                $batchData[] = [
+                    'batch_id' => $batchId,
+                    'order_id' => $orderId,
+                    'product' => $productValue,
+                    'net_price' => $netPrice,
+                    'is_template_price' => $isTemplatePrice,
+                    'milestone' => $milestone,
+                    'segment' => $segment,
+                    'nama_witel' => $witel,
+                    'status_wfm' => $statusWfm,
+                    'customer_name' => trim($row[$idx['customer name'] ?? $idx['customer_name'] ?? -1] ?? ''),
+                    'channel' => $channel,
+                    'layanan' => $layanan,
+                    'filter_produk' => trim($row[$idx['filter product'] ?? $idx['filter_product'] ?? -1] ?? ''),
+                    'witel_lama' => trim($row[$idx['witel'] ?? -1] ?? ''),
+                    'order_status' => trim($row[$idx['order status'] ?? $idx['order_status'] ?? -1] ?? ''),
+                    'order_sub_type' => trim($row[$idx['order subtype'] ?? $idx['order_subtype'] ?? -1] ?? ''),
+                    'order_status_n' => trim($row[$idx['order_status_n'] ?? -1] ?? ''),
+                    'tahun' => $row[$idx['tahun'] ?? -1] ?? null,
+                    'telda' => trim($row[$idx['telda'] ?? -1] ?? ''),
+                    'week' => $row[$idx['week'] ?? -1] ?? null,
+                    'order_date' => $orderDate,
+                    'order_created_date' => $orderCreatedDate,
+                    'created_at' => now(),
+                    'updated_at' => now(),
+                ];
+
+                // --- SIAPKAN DATA PRODUK PECAHAN (CHILD) ---
+                if ($productValue && str_contains($productValue, '-')) {
+                    $individualProducts = explode('-', $productValue);
+                    foreach ($individualProducts as $pName) {
+                        $pName = trim($pName);
+                        if (empty($pName)) continue;
+
+                        $batchProducts[] = [
+                            'batch_id' => $batchId,
+                            'order_id' => $orderId,
+                            'product_name' => $pName,
+                            'net_price' => $this->calculateFastPrice($pName, $segment, $witel),
+                            'status_wfm' => $statusWfm,
+                            'channel' => $channel,
+                            'created_at' => now(),
+                            'updated_at' => now()
+                        ];
+                    }
+                }
+
+                // INSERT BATCH (500 Baris)
+                if (count($batchData) >= 500) {
+                    DB::table('temp_upload_data')->insert($batchData);
+                    $batchData = [];
+
+                    if (!empty($batchProducts)) {
+                        DB::table('temp_order_products')->insert($batchProducts);
+                        $batchProducts = [];
+                    }
+                    Cache::put('import_progress_'.$batchId, 50, now()->addHour());
+                }
+            }
+
+            // INSERT SISA DATA
+            if (!empty($batchData)) DB::table('temp_upload_data')->insert($batchData);
+            if (!empty($batchProducts)) DB::table('temp_order_products')->insert($batchProducts);
+
+            fclose($handle);
+            Cache::put('import_progress_'.$batchId, 90, now()->addHour());
+
+            // 5. PROSES FINAL (Sinkronisasi ke Tabel Asli)
+            $this->processSqlSync($batchId);
+
+            Cache::put('import_progress_'.$batchId, 100, now()->addHour());
+            Log::info("Batch [{$batchId}]: Import Selesai. Total: {$processedRows}");
+
         } catch (\Throwable $e) {
-            // Ini akan memanggil method failed() di bawah
             $this->fail($e);
+            if (isset($handle) && is_resource($handle)) fclose($handle);
+            throw $e;
+        } finally {
+            if ($isConverted && file_exists($csvPath)) @unlink($csvPath);
         }
+    }
+
+    private function processSqlSync($batchId)
+    {
+        DB::transaction(function () use ($batchId) {
+            // 1. Cancel Logic (Update data yang hilang di file baru)
+            DB::statement("
+                UPDATE document_data d
+                LEFT JOIN temp_upload_data t ON d.order_id = t.order_id
+                SET d.status_wfm = 'done close cancel', d.updated_at = NOW()
+                WHERE d.status_wfm = 'in progress' AND t.order_id IS NULL
+            ");
+
+            // 2. Insert/Update Tabel Utama (Document Data)
+            // WAJIB dijalankan DULUAN sebelum tabel anak (Order Products)
+            DB::statement("
+                INSERT INTO document_data (
+                    batch_id, order_id, product, net_price, milestone, segment, nama_witel, status_wfm,
+                    customer_name, channel, layanan, filter_produk, witel_lama, order_status,
+                    order_sub_type, order_status_n, tahun, telda, week,
+                    order_date, order_created_date, created_at, updated_at
+                )
+                SELECT
+                    batch_id, order_id, product, net_price, milestone, segment, nama_witel, status_wfm,
+                    customer_name, channel, layanan, filter_produk, witel_lama, order_status,
+                    order_sub_type, order_status_n, tahun, telda, week,
+                    order_date, order_created_date, NOW(), NOW()
+                FROM temp_upload_data
+                WHERE batch_id = ?
+                ON DUPLICATE KEY UPDATE
+                    batch_id = VALUES(batch_id),
+                    product = VALUES(product),
+                    net_price = VALUES(net_price),
+                    milestone = VALUES(milestone),
+                    status_wfm = VALUES(status_wfm),
+                    segment = VALUES(segment),
+                    channel = VALUES(channel),
+                    updated_at = NOW()
+            ", [$batchId]);
+
+            // 3. Insert/Update Tabel Anak (Order Products)
+            // Mengambil dari tabel transit temp_order_products
+            DB::statement("
+                INSERT INTO order_products (
+                    order_id, product_name, net_price, channel, status_wfm, created_at, updated_at
+                )
+                SELECT
+                    order_id, product_name, net_price, channel, status_wfm, NOW(), NOW()
+                FROM temp_order_products
+                WHERE batch_id = ?
+                ON DUPLICATE KEY UPDATE
+                    net_price = VALUES(net_price),
+                    status_wfm = VALUES(status_wfm),
+                    updated_at = NOW()
+            ", [$batchId]);
+        });
+    }
+
+    private function calculateFastPrice($productName, $segment, $witel)
+    {
+        $productName = strtolower(trim($productName));
+        $witel = strtoupper(trim($witel));
+        $segment = strtoupper(trim($segment));
+
+        if ($productName == 'netmonk') return ($segment === 'LEGS') ? 26100 : (($witel === 'BALI') ? 26100 : 21600);
+        if ($productName == 'oca') return ($segment === 'LEGS') ? 104000 : (($witel === 'NUSA TENGGARA') ? 104000 : 103950);
+        if ($productName == 'antares eazy') return 35000;
+        if ($productName == 'pijar sekolah') return 582750;
+        return 0;
+    }
+
+    private function parseDateFast($date)
+    {
+        if (empty($date) || $date == '-' || $date == '#N/A') return null;
+        try {
+            if (is_numeric($date)) {
+                return Date::excelToDateTimeObject($date)->format('Y-m-d H:i:s');
+            }
+            return Carbon::parse($date)->format('Y-m-d H:i:s');
+        } catch (\Exception $e) { return null; }
     }
 
     public function failed(\Throwable $exception): void
     {
         $batchId = $this->batch() ? $this->batch()->id : 'N/A';
-
-        // =======================================================
-        // == LOGIKA BARU UNTUK MENANGANI PEMBATALAN ==
-        // =======================================================
-        // Periksa apakah exception ini adalah pembatalan yang disengaja
-        if (str_contains($exception->getMessage(), 'Import cancelled by user')) {
-            // Catat sebagai PERINGATAN (Warning), bukan ERROR
-            Log::warning("Batch [{$batchId}]: Job dihentikan secara paksa oleh user.");
-            // Hapus cache progress agar progress bar di frontend hilang
-            Cache::forget('import_progress_'.$batchId);
-
-            // Jangan jalankan sisa logika 'failed'. Cukup berhenti.
-            return;
-        }
-        // =======================================================
-        // =======================================================
-
-        // Jika ini adalah error lain yang sebenarnya, log seperti biasa.
-        Log::error("Batch [{$batchId}]: Job ImportAndProcessDocument GAGAL.");
-        Log::error($exception->getMessage());
-        // Batasi panjang trace agar log tidak terlalu besar
-        Log::error(substr($exception->getTraceAsString(), 0, 2000));
-    }
-
-    // Fungsi calculateProductPrice tidak perlu diubah, biarkan saja
-    private function calculateProductPrice(string $productName, DocumentData $order): int
-    {
-        $witel = strtoupper(trim($order->nama_witel));
-        $segment = strtoupper(trim($order->segment));
-
-        switch (strtolower(trim($productName))) {
-            case 'netmonk':
-                return ($segment === 'LEGS')
-                    ? 26100
-                    : (($witel === 'BALI') ? 26100 : 21600);
-
-            case 'oca':
-                return ($segment === 'LEGS')
-                    ? 104000
-                    : (($witel === 'NUSA TENGGARA') ? 104000 : 103950);
-
-            case 'antares eazy':
-                return 35000;
-
-            case 'pijar sekolah':
-                return 582750;
-
-            default:
-                return 0;
-        }
+        Log::error("Batch [{$batchId}]: GAGAL - " . $exception->getMessage());
+        Cache::put('import_progress_'.$batchId, -1, now()->addHour());
     }
 }

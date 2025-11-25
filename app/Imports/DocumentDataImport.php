@@ -40,7 +40,7 @@ class DocumentDataImport implements OnEachRow, WithChunkReading, WithEvents, Wit
 
     public function chunkSize(): int
     {
-        return 500;
+        return 200;
     }
 
     public function registerEvents(): array
@@ -80,6 +80,12 @@ class DocumentDataImport implements OnEachRow, WithChunkReading, WithEvents, Wit
         // =======================================================
         // == PENGECEKAN PEMBATALAN BARU (SETIAP 10 BARIS) ==
         // =======================================================
+        $rowAsArray = $row->toArray();
+        $checkHeader = $rowAsArray['order_id'] ?? $rowAsArray['product'] ?? null;
+        $invalidKeywords = ['Order Id', 'Product', 'order_id', 'product', 'Net Price'];
+        if (in_array($checkHeader, $invalidKeywords)) {
+            return; // LANGSUNG STOP, jangan proses apapun
+        }
         // Untuk efisiensi, kita hanya mengecek ke database setiap 10 baris
         if ($this->processedRows % 10 === 0) {
             // Cari status batch saat ini
