@@ -228,18 +228,18 @@ const SosReportTable = ({ data, tableConfig, viewMode }) => {
 // ===================================================================
 // Komponen Utama Halaman (Layout Baru)
 // ===================================================================
-export default function ReportDatin({ auth, reportData = [], galaksiData = [], savedConfigAomo, savedConfigSodoro }) {
+export default function ReportDatin({ auth, reportDataAomo = [], reportDataSodoro = [], galaksiData = [], savedConfigAomo, savedConfigSodoro }) {
 
     const aomoConfig = useMemo(() => {
         return savedConfigAomo && savedConfigAomo.length > 0
             ? savedConfigAomo
-            : sosTableConfigTemplateAOMO;
+            : sosTableConfigTemplateAOMO; // Pastikan import variable ini ada
     }, [savedConfigAomo]);
 
     const sodoroConfig = useMemo(() => {
         return savedConfigSodoro && savedConfigSodoro.length > 0
             ? savedConfigSodoro
-            : sosTableConfigTemplateSODORO;
+            : sosTableConfigTemplateSODORO; // Pastikan import variable ini ada
     }, [savedConfigSodoro]);
 
     return (
@@ -258,14 +258,24 @@ export default function ReportDatin({ auth, reportData = [], galaksiData = [], s
                             Data Report (Tampilan AO MO)
                         </h3>
                         <div className="mt-4">
-                            <SosReportTable data={reportData} tableConfig={aomoConfig} viewMode="AOMO" />
+                            {/* Gunakan reportDataAomo */}
+                            <SosReportTable
+                                data={reportDataAomo}
+                                tableConfig={aomoConfig}
+                                viewMode="AOMO"
+                            />
                         </div>
 
                         <h3 className="font-semibold text-lg text-gray-800 mt-8 pt-6 border-t">
                             Data Report (Tampilan SO DO RO)
                         </h3>
                         <div className="mt-4">
-                            <SosReportTable data={reportData} tableConfig={sodoroConfig} viewMode="SODORO" />
+                            {/* Gunakan reportDataSodoro */}
+                            <SosReportTable
+                                data={reportDataSodoro}
+                                tableConfig={sodoroConfig}
+                                viewMode="SODORO"
+                            />
                         </div>
                     </div>
 
@@ -275,7 +285,6 @@ export default function ReportDatin({ auth, reportData = [], galaksiData = [], s
                             <h3 className="font-semibold text-lg text-gray-800">
                                 Posisi Galaksi (Order In Progress)
                             </h3>
-                            {/* Tombol ekspor bisa ditambahkan di sini jika perlu */}
                         </div>
                         <GalaksiReportTable galaksiData={galaksiData} />
                     </div>

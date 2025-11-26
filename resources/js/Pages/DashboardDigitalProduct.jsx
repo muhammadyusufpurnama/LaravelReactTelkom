@@ -1,8 +1,6 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout';
 import { Head, router, Link } from '@inertiajs/react';
-
-// ... (Semua impor lain tetap sama)
 import RevenueBySubTypeChart from '@/Components/RevenueBySubTypeChart';
 import AmountBySubTypeChart from '@/Components/AmountBySubTypeChart';
 import SessionSubTypeChart from '@/Components/SessionSubTypeChart';
@@ -23,25 +21,45 @@ const StatusBadge = ({ text, color }) => (
 
 export default function DashboardDigitalProduct({
     auth, revenueBySubTypeData, amountBySubTypeData, dataPreview, sessionBySubType, productRadarData, witelPieData, filters = {}, filterOptions = {},
-    // 1. Terima prop isEmbed dari controller, dengan nilai default false
     isEmbed = false
 }) {
-    // --- STATE MANAGEMENT & HOOKS --- (Tidak ada perubahan di sini)
+    // --- STATE MANAGEMENT & HOOKS ---
     const productOptions = useMemo(() => filterOptions.products || [], [filterOptions.products]);
     const witelOptions = useMemo(() => filterOptions.witelList || [], [filterOptions.witelList]);
     const subTypeOptions = useMemo(() => filterOptions.subTypes || [], [filterOptions.subTypes]);
     const branchOptions = useMemo(() => filterOptions.branchList || [], [filterOptions.branchList]);
+    const witelBranchMap = useMemo(() => filterOptions.witelBranchMap || {}, [filterOptions.witelBranchMap]);
 
     const [localFilters, setLocalFilters] = useState({
         products: [], witels: [], subTypes: [], branches: [],
         startDate: null, endDate: null,
     });
 
-    const [revenueFilters, setRevenueFilters] = useState({ products: productOptions });
-    const [amountFilters, setAmountFilters] = useState({ products: productOptions });
-    const [radarFilters, setRadarFilters] = useState({ products: productOptions, witels: witelOptions });
-    const [pieFilters, setPieFilters] = useState({ products: productOptions, witels: witelOptions });
+    const dynamicBranchOptions = useMemo(() => {
+        if (!localFilters.witels || localFilters.witels.length === 0) {
+            return branchOptions;
+        }
 
+        let availableBranches = [];
+        localFilters.witels.forEach(witel => {
+            if (witelBranchMap[witel]) {
+                availableBranches = [...availableBranches, ...witelBranchMap[witel]];
+            }
+        });
+
+        return [...new Set(availableBranches)].sort();
+    }, [localFilters.witels, branchOptions, witelBranchMap]);
+
+    useEffect(() => {
+        if (localFilters.branches.length > 0) {
+            const validBranches = localFilters.branches.filter(b => dynamicBranchOptions.includes(b));
+            if (validBranches.length !== localFilters.branches.length) {
+                setLocalFilters(prev => ({ ...prev, branches: validBranches }));
+            }
+        }
+    }, [localFilters.witels, dynamicBranchOptions]);
+
+    // --- INISIALISASI FILTER GLOBAL ---
     useEffect(() => {
         setLocalFilters({
             products: filters.products && Array.isArray(filters.products) ? filters.products : productOptions,
@@ -51,16 +69,11 @@ export default function DashboardDigitalProduct({
             startDate: filters.startDate ? new Date(`${filters.startDate}T00:00:00`) : null,
             endDate: filters.endDate ? new Date(`${filters.endDate}T00:00:00`) : null,
         });
-
-        setRevenueFilters({ products: productOptions });
-        setAmountFilters({ products: productOptions });
-        setRadarFilters({ products: productOptions, witels: witelOptions });
-        setPieFilters({ products: productOptions, witels: witelOptions });
-
+        // State untuk filter per-grafik dan useEffect reset-nya SUDAH DIHAPUS
     }, [filters, productOptions, witelOptions, subTypeOptions, branchOptions]);
 
 
-    // --- FUNGSI HANDLER --- (Tidak ada perubahan di sini)
+    // --- FUNGSI HANDLER ---
     const formatDateForQuery = (date) => {
         if (!date) return undefined;
         const year = date.getFullYear();
@@ -91,23 +104,20 @@ export default function DashboardDigitalProduct({
         router.get(targetRoute, { ...filters, limit: value }, { preserveScroll: true, replace: true });
     }
 
-
-    // --- LOGIKA FILTERING DATA --- (Tidak ada perubahan di sini)
-    const filteredRevenueData = useMemo(() => revenueBySubTypeData?.filter(item => revenueFilters.products.includes(item.product)) || [], [revenueBySubTypeData, revenueFilters]);
-    const filteredAmountData = useMemo(() => amountBySubTypeData?.filter(item => amountFilters.products.includes(item.product)) || [], [amountBySubTypeData, amountFilters]);
+    // --- TRANSFORMASI DATA KHUSUS RADAR CHART ---
+    // Kita tetap butuh transformasi format, tapi tidak butuh filtering lokal lagi
     const transformedRadarData = useMemo(() => {
         if (!productRadarData || productRadarData.length === 0) return [];
-        const filteredByWitel = productRadarData.filter(item => radarFilters.witels.includes(item.nama_witel));
-        return radarFilters.products.map(product => ({
+
+        // Langsung gunakan data dari props karena sudah difilter backend
+        // Kita map berdasarkan productOptions agar struktur radar tetap konsisten
+        return productOptions.map(product => ({
             product_name: product,
-            ...Object.fromEntries(filteredByWitel.map(witelData => [witelData.nama_witel, witelData[product] || 0]))
+            ...Object.fromEntries(productRadarData.map(witelData => [witelData.nama_witel, witelData[product] || 0]))
         }));
-    }, [productRadarData, radarFilters]);
-    const filteredWitelPieData = useMemo(() => witelPieData?.filter(item => pieFilters.witels.includes(item.nama_witel)) || [], [witelPieData, pieFilters]);
+    }, [productRadarData, productOptions]);
 
 
-    // 2. Ekstrak konten utama dashboard ke dalam sebuah variabel/konstanta.
-    // Ini membuat kode lebih bersih (DRY - Don't Repeat Yourself).
     const DashboardContent = (
         <>
             {/* Panel Filter Global */}
@@ -131,7 +141,12 @@ export default function DashboardDigitalProduct({
                     </div>
                     <div>
                         <label className="block text-sm font-medium text-gray-700 mb-1">Branch</label>
-                        <DropdownCheckbox title="Pilih Branch" options={branchOptions} selectedOptions={localFilters.branches} onSelectionChange={s => setLocalFilters(p => ({ ...p, branches: s }))} />
+                        <DropdownCheckbox
+                            title={localFilters.witels.length > 0 ? "Pilih Branch (Filtered)" : "Pilih Branch"}
+                            options={dynamicBranchOptions}
+                            selectedOptions={localFilters.branches}
+                            onSelectionChange={s => setLocalFilters(p => ({ ...p, branches: s }))}
+                        />
                     </div>
                 </div>
                 <div className="flex justify-end gap-3 mt-4">
@@ -144,13 +159,13 @@ export default function DashboardDigitalProduct({
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                 <div className="bg-white p-6 rounded-lg shadow-md flex flex-col">
                     <h3 className="font-semibold text-lg text-gray-800">Revenue by Sub-type</h3>
-                    <div className="flex-grow min-h-[300px]"><RevenueBySubTypeChart data={filteredRevenueData} /></div>
-                    <DropdownCheckbox title="Filter Produk" options={productOptions} selectedOptions={revenueFilters.products} onSelectionChange={(s) => setRevenueFilters(p => ({ ...p, products: s }))} />
+                    {/* Menggunakan props revenueBySubTypeData secara langsung */}
+                    <div className="flex-grow min-h-[300px]"><RevenueBySubTypeChart data={revenueBySubTypeData} /></div>
                 </div>
                 <div className="bg-white p-6 rounded-lg shadow-md flex flex-col">
                     <h3 className="font-semibold text-lg text-gray-800">Amount by Sub-type</h3>
-                    <div className="flex-grow min-h-[300px]"><AmountBySubTypeChart data={filteredAmountData} /></div>
-                    <DropdownCheckbox title="Filter Produk" options={productOptions} selectedOptions={amountFilters.products} onSelectionChange={(s) => setAmountFilters(p => ({ ...p, products: s }))} />
+                    {/* Menggunakan props amountBySubTypeData secara langsung */}
+                    <div className="flex-grow min-h-[300px]"><AmountBySubTypeChart data={amountBySubTypeData} /></div>
                 </div>
             </div>
 
@@ -161,14 +176,13 @@ export default function DashboardDigitalProduct({
                 </div>
                 <div className="bg-white p-6 rounded-lg shadow-md flex flex-col">
                     <h3 className="font-semibold text-lg text-gray-800">Product Radar Chart per Witel</h3>
+                    {/* Menggunakan transformedRadarData yang sudah disederhanakan */}
                     <div className="flex-grow min-h-[300px]"><ProductRadarChart data={transformedRadarData} /></div>
-                    <DropdownCheckbox title="Filter Produk" options={productOptions} selectedOptions={radarFilters.products} onSelectionChange={(s) => setRadarFilters(p => ({ ...p, products: s }))} />
-                    <DropdownCheckbox title="Filter Witel" options={witelOptions} selectedOptions={radarFilters.witels} onSelectionChange={(s) => setRadarFilters(p => ({ ...p, witels: s }))} />
                 </div>
                 <div className="bg-white p-6 rounded-lg shadow-md flex flex-col">
                     <h3 className="font-semibold text-lg text-gray-800">Witel Pie Chart</h3>
-                    <div className="flex-grow min-h-[300px]"><WitelPieChart data={filteredWitelPieData} /></div>
-                    <DropdownCheckbox title="Filter Witel" options={witelOptions} selectedOptions={pieFilters.witels} onSelectionChange={(s) => setPieFilters(p => ({ ...p, witels: s }))} />
+                    {/* Menggunakan props witelPieData secara langsung */}
+                    <div className="flex-grow min-h-[300px]"><WitelPieChart data={witelPieData} /></div>
                 </div>
             </div>
 
@@ -221,9 +235,6 @@ export default function DashboardDigitalProduct({
         </>
     );
 
-    // 3. Render secara kondisional.
-    // Jika isEmbed true, hanya render kontennya di dalam div sederhana.
-    // Jika false, bungkus konten dengan AuthenticatedLayout dan Head.
     if (isEmbed) {
         return (
             <div className="p-4 sm:p-6 bg-gray-100 font-sans">
@@ -234,7 +245,7 @@ export default function DashboardDigitalProduct({
 
     return (
         <AuthenticatedLayout
-            user={auth.user} // 'auth' sudah di-pass ke komponen, bisa di-pass ke layout
+            user={auth.user}
             header={<h2 className="font-semibold text-xl text-gray-800 leading-tight">Dashboard Digital Product</h2>}
         >
             <Head title="Dashboard Digital Product" />

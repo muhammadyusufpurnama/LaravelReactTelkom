@@ -511,9 +511,9 @@ class DataReportController extends Controller
 
         // Jika key tidak ada di map, kembalikan array kosong
         if (!isset($productMap[$productInitial])) {
-             return Inertia::render('DataReport/Details', [
+            return Inertia::render('DataReport/Details', [
                 'orders' => [],
-                'pageTitle' => "Detail Laporan (Produk tidak dikenal)",
+                'pageTitle' => 'Detail Laporan (Produk tidak dikenal)',
                 'filters' => $validated,
             ]);
         }
@@ -533,7 +533,7 @@ class DataReportController extends Controller
                     $query->orWhereRaw('LOWER(TRIM(product)) = ?', [$product]);
                 }
             })
-            ->select('order_id', 'product', 'customer_name', $dateColumn . ' as tanggal', 'milestone', 'status_wfm')
+            ->select('order_id', 'product', 'customer_name', $dateColumn.' as tanggal', 'milestone', 'status_wfm')
             ->get();
 
         // 5. Query Order Bundle (dari OrderProduct)
@@ -542,21 +542,21 @@ class DataReportController extends Controller
             ->where('document_data.segment', $validated['segment'])
             ->where('document_data.nama_witel', $validated['witel'])
             ->where('order_products.status_wfm', $statusWfm)
-            ->whereYear('document_data.' . $dateColumn, $period->year)
-            ->whereMonth('document_data.' . $dateColumn, $period->month)
+            ->whereYear('document_data.'.$dateColumn, $period->year)
+            ->whereMonth('document_data.'.$dateColumn, $period->month)
             ->where(function ($query) use ($targetProducts) {
                 foreach ($targetProducts as $product) {
                     $query->orWhereRaw('LOWER(TRIM(order_products.product_name)) = ?', [$product]);
                 }
             })
-            ->select('order_products.order_id', 'order_products.product_name as product', 'document_data.customer_name', 'document_data.' . $dateColumn . ' as tanggal', 'document_data.milestone', 'order_products.status_wfm')
+            ->select('order_products.order_id', 'order_products.product_name as product', 'document_data.customer_name', 'document_data.'.$dateColumn.' as tanggal', 'document_data.milestone', 'order_products.status_wfm')
             ->get();
 
         $allOrders = $singleOrders->merge($bundleOrders)->sortByDesc('tanggal');
 
         return Inertia::render('DataReport/Details', [
             'orders' => $allOrders->values(),
-            'pageTitle' => "Detail Laporan",
+            'pageTitle' => 'Detail Laporan',
             'filters' => $validated,
         ]);
     }

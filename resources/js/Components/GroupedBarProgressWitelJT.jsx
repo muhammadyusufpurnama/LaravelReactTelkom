@@ -1,12 +1,32 @@
 import React from 'react';
 import { Bar } from 'react-chartjs-2';
+import {
+    Chart as ChartJS,
+    CategoryScale,
+    LinearScale,
+    BarElement,
+    Title,
+    Tooltip,
+    Legend
+} from 'chart.js';
 
+ChartJS.register(
+    CategoryScale,
+    LinearScale,
+    BarElement,
+    Title,
+    Tooltip,
+    Legend
+);
+
+// UBAH WARNA DISINI: Menggunakan Gradasi Kuning/Emas (Gold)
+// Agar senada dengan grafik "Top 3 On Progress"
 const WITEL_COLORS = [
-    '#EC4899', // WITEL BALI (Pink)
-    '#3B82F6', // WITEL JATIM BARAT (Blue)
-    '#14B8A6', // WITEL JATIM TIMUR (Teal)
-    '#F97316', // WITEL NUSA TENGGARA (Orange)
-    '#8B5CF6', // WITEL SURAMADU (Purple)
+    '#854d0e', // WITEL 1: Yellow-800 (Paling Gelap / Bawah)
+    '#a16207', // WITEL 2: Yellow-700
+    '#ca8a04', // WITEL 3: Yellow-600
+    '#eab308', // WITEL 4: Yellow-500
+    '#fde047', // WITEL 5: Yellow-300 (Paling Cerah / Atas)
 ];
 
 const GroupedBarProgressWitelJT = ({ data }) => {
@@ -23,6 +43,8 @@ const GroupedBarProgressWitelJT = ({ data }) => {
                 witelData.fi_ogp_live,
             ],
             backgroundColor: WITEL_COLORS[index % WITEL_COLORS.length],
+            borderColor: '#ffffff',
+            borderWidth: 1,
         };
     });
 
@@ -31,64 +53,50 @@ const GroupedBarProgressWitelJT = ({ data }) => {
         datasets: datasets,
     };
 
-    const chartOptions = {
+    const options = {
         responsive: true,
         maintainAspectRatio: false,
         plugins: {
             title: {
                 display: true,
-                text: 'Perbandingan Progress Deploy per Witel',
+                text: 'Perbandingan Progress Deploy per Witel (Stacked)',
                 font: { size: 16 },
                 padding: { bottom: 20 }
             },
             legend: {
                 position: 'bottom',
             },
+            tooltip: {
+                mode: 'index',
+                intersect: false,
+            }
         },
         scales: {
+            x: {
+                stacked: true,
+                title: {
+                    display: true,
+                    text: 'Tahapan Progress'
+                },
+                grid: {
+                    display: false
+                }
+            },
             y: {
+                stacked: true,
                 beginAtZero: true,
                 title: {
                     display: true,
                     text: 'Jumlah LOP'
                 }
             },
-            x: {
-                title: {
-                    display: true,
-                    text: 'Tahapan Progress'
-                },
-                ticks: {
-                    maxRotation: 25,
-                    minRotation: 25,
-                    autoSkip: false,
-                    padding: 10,
-                },
-
-                // ===== PERUBAHAN DI SINI =====
-
-                // 1. BUAT GRUP BAR LEBIH SEMPIT (agar spasi "n" lebih lebar)
-                // Coba 0.5 untuk spasi 50%. Anda bisa atur (misal 0.4 atau 0.6)
-                categoryPercentage: 0.5, // Ganti dari 0.8 atau 0.6
-
-                // 2. BIARKAN BAR DI DALAM GRUP TETAP RAPAT
-                // Angka ini (0.9) membuat bar Witel (pink, biru, dll)
-                // tetap rapat di dalam grupnya. JANGAN diubah.
-                barPercentage: 0.9,
-
-                // ===== AKHIR PERUBAHAN =====
-            }
         },
-        // ===== PERUBAHAN JUGA DISINI: Menambah padding bawah untuk chart secara keseluruhan =====
         layout: {
-            padding: {
-                bottom: 20 // Tambahkan padding di bagian bawah chart
-            }
+            padding: { bottom: 20 }
         }
-        // ===== AKHIR PERUBAHAN =====
     };
 
-    return <Bar data={chartData} options={chartOptions} />;
+    return <Bar data={chartData} options={options} />;
 };
 
 export default GroupedBarProgressWitelJT;

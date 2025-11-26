@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout';
 import { Head, router, Link, usePage } from '@inertiajs/react';
 
@@ -79,75 +79,77 @@ export default function DashboardJT({
 
     // Ambil opsi filter dari props, memo-kan agar tidak re-render
     const witelOptions = useMemo(() => filterOptions.witelIndukList || [], [filterOptions.witelIndukList]);
-    const poOptions = useMemo(() => filterOptions.poList || [], [filterOptions.poList]);
+    const allPoOptions = useMemo(() => filterOptions.poList || [], [filterOptions.poList]);
+
+    const witelPoMap = useMemo(() => filterOptions.witelPoMap || {}, [filterOptions.witelPoMap]);
 
     // State untuk filter global (apa yang dipilih pengguna di panel)
-    const [localFilters, setLocalFilters] = useState({
-        witels: [],
-        pos: [],
-        startDate: null,
-        endDate: null,
-    });
+    const [localFilters, setLocalFilters] = useState(() => ({
+        witels: filters.witels && Array.isArray(filters.witels) ? filters.witels : witelOptions,
+        pos: filters.pos && Array.isArray(filters.pos) ? filters.pos : allPoOptions,
+        startDate: filters.startDate ? new Date(`${filters.startDate}T00:00:00`) : null,
+        endDate: filters.endDate ? new Date(`${filters.endDate}T00:00:00`) : null,
+    }));
 
-    // [BARU] State untuk filter per-chart
-    const [stackedBarFilters, setStackedBarFilters] = useState({ witels: [] });
-    const [usiaWitelFilters, setUsiaWitelFilters] = useState({ witels: [] });
-    const [usiaPoFilters, setUsiaPoFilters] = useState({ pos: [] });
-    const [radarFilters, setRadarFilters] = useState({ witels: [] });
+    const dynamicPoOptions = useMemo(() => {
+        // Jika tidak ada Witel dipilih, tampilkan SEMUA PO
+        if (!localFilters.witels || localFilters.witels.length === 0) {
+            return allPoOptions;
+        }
 
-    // Sinkronkan state lokal dengan props (filter aktif) saat halaman dimuat
-    useEffect(() => {
-        setLocalFilters({
-            // Jika filter 'witels' ada di URL, gunakan itu. Jika tidak, default ke *semua* witel.
-            witels: filters.witels && Array.isArray(filters.witels) ? filters.witels : witelOptions,
-            pos: filters.pos && Array.isArray(filters.pos) ? filters.pos : poOptions,
-            startDate: filters.startDate ? new Date(`${filters.startDate}T00:00:00`) : null,
-            endDate: filters.endDate ? new Date(`${filters.endDate}T00:00:00`) : null,
+        // Kumpulkan PO dari Witel yang dipilih
+        let availablePos = [];
+        localFilters.witels.forEach(witel => {
+            // Mapping key di backend biasanya Uppercase (misal: "WITEL SURAMADU")
+            // Pastikan akses key sesuai
+            const mapKey = witel.trim();
+
+            if (witelPoMap[mapKey]) {
+                availablePos = [...availablePos, ...witelPoMap[mapKey]];
+            }
         });
 
-        // [BARU] Inisialisasi filter per-chart agar menampilkan semua data
-        setStackedBarFilters({ witels: witelOptions });
-        setUsiaWitelFilters({ witels: witelOptions });
-        setUsiaPoFilters({ pos: poOptions });
-        setRadarFilters({ witels: witelOptions });
+        // Jika user memilih Witel tapi map-nya kosong/tidak ketemu,
+        // return array kosong (agar user sadar tidak ada PO untuk witel itu)
+        // atau return allPoOptions (jika ingin fallback).
+        // Disini kita return array kosong yang unik dan di-sort.
+        if (availablePos.length === 0) return [];
 
-    }, [filters, witelOptions, poOptions]);
+        return [...new Set(availablePos)].sort();
+    }, [localFilters.witels, allPoOptions, witelPoMap]);
 
-    // [BARU] useMemo untuk memfilter data chart secara lokal
-    const filteredStackedBarData = useMemo(() =>
-        stackedBarData.filter(item => stackedBarFilters.witels.includes(item.witel))
-        , [stackedBarData, stackedBarFilters]);
+    // [PERBAIKAN 2] Gunakan useRef untuk melacak Render Pertama
+    const isFirstRender = useRef(true);
 
-    const filteredUsiaWitelData = useMemo(() =>
-        usiaWitelData.filter(item => usiaWitelFilters.witels.includes(item.witel))
-        , [usiaWitelData, usiaWitelFilters]);
+    useEffect(() => {
+        if (isFirstRender.current) {
+            isFirstRender.current = false;
+            return;
+        }
 
-    const filteredUsiaPoData = useMemo(() =>
-        usiaPoData.filter(item => usiaPoFilters.pos.includes(item.po_name))
-        , [usiaPoData, usiaPoFilters]);
+        // Jika User mengganti Witel, cek apakah PO yang sedang dipilih masih valid?
+        if (localFilters.pos.length > 0) {
+            // Filter pos yang ada di dynamicPoOptions saat ini
+            const validPos = localFilters.pos.filter(p => dynamicPoOptions.includes(p));
 
-    const filteredRadarData = useMemo(() =>
-        radarData.filter(item => radarFilters.witels.includes(item.witel))
-        , [radarData, radarFilters]);
-
-
-    // --- FUNGSI HANDLER ---
+            // Jika jumlah PO valid berbeda dengan jumlah PO yang dipilih, berarti ada yang harus dibuang
+            if (validPos.length !== localFilters.pos.length) {
+                setLocalFilters(prev => ({ ...prev, pos: validPos }));
+            }
+        }
+    }, [localFilters.witels, dynamicPoOptions]);
 
     // Tombol "Terapkan Filter"
     const applyFilters = () => {
         const queryParams = {
             witels: localFilters.witels.length > 0 && localFilters.witels.length < witelOptions.length ? localFilters.witels : undefined,
-            pos: localFilters.pos.length > 0 && localFilters.pos.length < poOptions.length ? localFilters.pos : undefined,
+            pos: localFilters.pos.length > 0 && localFilters.pos.length < allPoOptions.length ? localFilters.pos : undefined,
             startDate: formatDateForQuery(localFilters.startDate),
             endDate: formatDateForQuery(localFilters.endDate),
         };
 
         const targetRoute = isEmbed ? route('dashboard.jt.embed') : route('dashboard.jt');
-        router.get(targetRoute, queryParams, {
-            replace: true,
-            preserveState: true,
-            preserveScroll: true,
-        });
+        router.get(targetRoute, queryParams, { replace: true, preserveState: true, preserveScroll: true });
     };
 
     // Tombol "Reset Filter"
@@ -198,7 +200,7 @@ export default function DashboardJT({
                     </div>
                     {/* Filter Witel Induk */}
                     <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">Witel Induk</label>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Witel</label>
                         <DropdownCheckbox
                             title="Pilih Witel"
                             options={witelOptions}
@@ -210,8 +212,8 @@ export default function DashboardJT({
                     <div>
                         <label className="block text-sm font-medium text-gray-700 mb-1">PO Name</label>
                         <DropdownCheckbox
-                            title="Pilih PO"
-                            options={poOptions}
+                            title={localFilters.witels.length > 0 ? "Pilih PO (Filtered)" : "Pilih PO"}
+                            options={dynamicPoOptions}
                             selectedOptions={localFilters.pos}
                             onSelectionChange={s => setLocalFilters(p => ({ ...p, pos: s }))}
                         />
@@ -226,7 +228,7 @@ export default function DashboardJT({
 
             {/* Grid Chart */}
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                {/* Chart 1: Pie Chart Status (Tanpa filter lokal, karena ini Grand Total) */}
+                {/* Chart 1: Pie Chart Status */}
                 <div className="bg-white p-6 rounded-lg shadow-md flex flex-col lg:col-span-1">
                     <div className="flex-grow min-h-[350px]">
                         <PieChartStatusLiveJT data={pieChartData} />
@@ -236,17 +238,9 @@ export default function DashboardJT({
                 {/* Chart 2: Stacked Bar Status per Witel */}
                 <div className="bg-white p-6 rounded-lg shadow-md flex flex-col lg:col-span-2">
                     <div className="flex-grow min-h-[350px]">
-                        {/* [BARU] Menggunakan data yang sudah difilter */}
-                        <StackedBarStatusWitelJT data={filteredStackedBarData} />
+                        {/* Kembali menggunakan stackedBarData asli */}
+                        <StackedBarStatusWitelJT data={stackedBarData} />
                     </div>
-                    {/* [BARU] Filter lokal per-chart */}
-                    <DropdownCheckbox
-                        title="Filter Witel"
-                        options={witelOptions}
-                        selectedOptions={stackedBarFilters.witels}
-                        onSelectionChange={s => setStackedBarFilters(p => ({ ...p, witels: s }))}
-                        className="mt-4"
-                    />
                 </div>
             </div>
 
@@ -254,53 +248,29 @@ export default function DashboardJT({
                 {/* Chart 3: Usia Tertinggi per Witel */}
                 <div className="bg-white p-6 rounded-lg shadow-md flex flex-col">
                     <div className="flex-grow min-h-[350px]">
-                        {/* [BARU] Menggunakan data yang sudah difilter */}
-                        <BarChartUsiaWitelJT data={filteredUsiaWitelData} />
+                        {/* Kembali menggunakan usiaWitelData asli */}
+                        <BarChartUsiaWitelJT data={usiaWitelData} />
                     </div>
-                    {/* [BARU] Filter lokal per-chart */}
-                    <DropdownCheckbox
-                        title="Filter Witel"
-                        options={witelOptions}
-                        selectedOptions={usiaWitelFilters.witels}
-                        onSelectionChange={s => setUsiaWitelFilters(p => ({ ...p, witels: s }))}
-                        className="mt-4"
-                    />
                 </div>
 
                 {/* Chart 4: Usia Tertinggi per PO */}
                 <div className="bg-white p-6 rounded-lg shadow-md flex flex-col">
                     <div className="flex-grow min-h-[350px]">
-                        {/* [BARU] Menggunakan data yang sudah difilter */}
-                        <BarChartUsiaPoJT data={filteredUsiaPoData} />
+                        {/* Kembali menggunakan usiaPoData asli */}
+                        <BarChartUsiaPoJT data={usiaPoData} />
                     </div>
-                    {/* [BARU] Filter lokal per-chart */}
-                    <DropdownCheckbox
-                        title="Filter PO"
-                        options={poOptions}
-                        selectedOptions={usiaPoFilters.pos}
-                        onSelectionChange={s => setUsiaPoFilters(p => ({ ...p, pos: s }))}
-                        className="mt-4"
-                    />
                 </div>
 
                 {/* Chart 5: Radar Chart Progress */}
                 <div className="bg-white p-6 rounded-lg shadow-md flex flex-col">
                     <div className="flex-grow min-h-[350px]">
-                        {/* [BARU] Menggunakan data yang sudah difilter */}
-                        <GroupedBarProgressWitelJT data={filteredRadarData} />
+                        {/* Kembali menggunakan radarData asli */}
+                        <GroupedBarProgressWitelJT data={radarData} />
                     </div>
-                    {/* [BARU] Filter lokal per-chart */}
-                    <DropdownCheckbox
-                        title="Filter Witel"
-                        options={witelOptions}
-                        selectedOptions={radarFilters.witels}
-                        onSelectionChange={s => setRadarFilters(p => ({ ...p, witels: s }))}
-                        className="mt-4"
-                    />
                 </div>
             </div>
 
-            {/* Tabel Data Preview */}
+            {/* Tabel Data Preview (Tidak Perlu Diubah, kode ini tetap sama) */}
             <div className="bg-white p-6 rounded-lg shadow-md mt-6">
                 <div className="flex justify-between items-center mb-4">
                     <h3 className="font-semibold text-lg text-gray-800">Data Preview (Diurutkan berdasarkan Usia Tertinggi)</h3>
@@ -360,7 +330,6 @@ export default function DashboardJT({
                         </tbody>
                     </table>
                 </div>
-                {/* Paginasi */}
                 {dataPreview?.links?.length > 1 && dataPreview.total > 0 && (
                     <div className="mt-4 flex flex-col sm:flex-row justify-between items-center text-sm text-gray-600 gap-4">
                         <span>Menampilkan {dataPreview.from} sampai {dataPreview.to} dari {dataPreview.total} hasil</span>

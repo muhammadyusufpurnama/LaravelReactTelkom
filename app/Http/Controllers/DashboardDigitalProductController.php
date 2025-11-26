@@ -4,12 +4,24 @@ namespace App\Http\Controllers;
 
 use App\Models\DocumentData;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Inertia\Inertia;
-use Illuminate\Support\Facades\Cache;
 
 class DashboardDigitalProductController extends Controller
 {
+    // Definisi Mapping
+    private function getWitelBranchMap()
+    {
+        return [
+            'SURAMADU' => ['BANGKALAN', 'GRESIK', 'KENJERAN', 'KETINTANG', 'LAMONGAN', 'MANYAR', 'PAMEKASAN', 'TANDES'],
+            'JATIM BARAT' => ['BATU', 'BLITAR', 'BOJONEGORO', 'KEDIRI', 'KEPANJEN', 'MADIUN', 'NGANJUK', 'NGAWI', 'PONOROGO', 'TRENGGALEK', 'TUBAN', 'TULUNGAGUNG'],
+            'JATIM TIMUR' => ['BANYUWANGI', 'BONDOWOSO', 'JEMBER', 'JOMBANG', 'LUMAJANG', 'MOJOKERTO', 'PASURUAN', 'PROBOLINGGO', 'SITUBONDO'],
+            'BALI' => ['SINGARAJA', 'GIANYAR', 'KLUNGKUNG', 'TABANAN', 'BULELENG', 'JEMBRANA', 'SANUR', 'UBUNG', 'JIMBRAN'],
+            'NUSA TENGGARA' => ['ATAMBUA', 'BIMA', 'ENDE', 'KUPANG', 'LABUAN BAJO', 'LOMBOK BARAT TENGAH', 'LOMBOK TIMUR UTARA', 'MAUMERE', 'SUMBAWA', 'WAKAIBUBAK', 'WAINGAPU'],
+        ];
+    }
+
     public function index(Request $request)
     {
         $settings = Cache::get('granular_embed_settings', []);
@@ -17,11 +29,11 @@ class DashboardDigitalProductController extends Controller
         if (isset($settings['digitalProduct']) && $settings['digitalProduct']['enabled'] && !empty($settings['digitalProduct']['url'])) {
             return Inertia::render('Dashboard/ExternalEmbed', [
                 'embedUrl' => $settings['digitalProduct']['url'],
-                'headerTitle' => 'Dashboard Digital Product' // Judul untuk layout
+                'headerTitle' => 'Dashboard Digital Product',
             ]);
         }
 
-        // 1. Validasi filter (sudah benar)
+        // 1. Validasi
         $validated = $request->validate([
             'startDate' => 'nullable|date_format:Y-m-d',
             'endDate' => 'nullable|date_format:Y-m-d|after_or_equal:startDate',
@@ -36,24 +48,24 @@ class DashboardDigitalProductController extends Controller
         $firstOrderDate = DocumentData::min('order_date');
         $latestOrderDate = DocumentData::max('order_date');
 
-        // Jika tidak ada data sama sekali, gunakan tanggal hari ini sebagai fallback
         $initialStartDate = $firstOrderDate ? \Carbon\Carbon::parse($firstOrderDate)->format('Y-m-d') : now()->format('Y-m-d');
         $initialEndDate = $latestOrderDate ? \Carbon\Carbon::parse($latestOrderDate)->format('Y-m-d') : now()->format('Y-m-d');
 
-        // Gunakan tanggal tersebut
         $startDateToUse = $request->input('startDate', $initialStartDate);
         $endDateToUse = $request->input('endDate', $initialEndDate);
 
-        $startDateToUse = $request->input('startDate', $initialStartDate);
-        $endDateToUse = $request->input('endDate', $initialEndDate);
+        // (Baris duplikat $startDateToUse dihapus disini)
 
-        // Daftar opsi filter (tidak berubah)
+        // Daftar opsi filter
         $products = ['Netmonk', 'OCA', 'Antares Eazy', 'Pijar'];
         $subTypes = ['AO', 'SO', 'DO', 'MO', 'RO'];
         $witelList = DocumentData::query()->select('nama_witel')->whereNotNull('nama_witel')->distinct()->orderBy('nama_witel')->pluck('nama_witel');
         $branchList = DocumentData::query()->select('telda')->whereNotNull('telda')->distinct()->orderBy('telda')->pluck('telda');
 
-        // CASE statements (tidak berubah)
+        // [TAMBAHAN PENTING] Panggil fungsi mapping
+        $witelBranchMap = $this->getWitelBranchMap();
+
+        // CASE statements
         $productCaseStatement = 'CASE '.
             "WHEN UPPER(TRIM(product)) LIKE 'NETMONK%' THEN 'Netmonk' ".
             "WHEN UPPER(TRIM(product)) LIKE 'OCA%' THEN 'OCA' ".
@@ -72,25 +84,18 @@ class DashboardDigitalProductController extends Controller
         }
         $subTypeCaseStatement .= 'ELSE NULL END';
 
-        // [PERBAIKAN UTAMA - ANTI GAGAL]
+        // Filter Logic Closure
         $applyFilters = function ($query) use ($startDateToUse, $endDateToUse, $validated, $subTypeCaseStatement, $productCaseStatement) {
-            // Selalu terapkan filter tanggal
             $query->whereBetween('order_date', [$startDateToUse.' 00:00:00', $endDateToUse.' 23:59:59']);
 
-            // [FIX PRODUK]
-            // Cek apakah 'products' ada dan merupakan array
             if (isset($validated['products']) && is_array($validated['products'])) {
                 if (empty($validated['products'])) {
-                    // Jika array-nya KOSONG (0/4), paksa kueri untuk tidak mengembalikan apa-apa.
-                    $query->whereRaw('1 = 0'); // Ini 100% pasti memfilter 0 hasil
+                    $query->whereRaw('1 = 0');
                 } else {
-                    // Jika array-nya berisi (misal 1/4, 2/4), gunakan whereIn
                     $query->whereIn(DB::raw($productCaseStatement), $validated['products']);
                 }
             }
-            // Jika $validated['products'] adalah null (tidak dikirim), filter tidak diterapkan (ambil 4/4)
 
-            // [FIX WITEL]
             if (isset($validated['witels']) && is_array($validated['witels'])) {
                 if (empty($validated['witels'])) {
                     $query->whereRaw('1 = 0');
@@ -99,7 +104,6 @@ class DashboardDigitalProductController extends Controller
                 }
             }
 
-            // [FIX BRANCH]
             if (isset($validated['branches']) && is_array($validated['branches'])) {
                 if (empty($validated['branches'])) {
                     $query->whereRaw('1 = 0');
@@ -108,7 +112,6 @@ class DashboardDigitalProductController extends Controller
                 }
             }
 
-            // [FIX SUB TYPE]
             if (isset($validated['subTypes']) && is_array($validated['subTypes'])) {
                 if (empty($validated['subTypes'])) {
                     $query->whereRaw('1 = 0');
@@ -118,7 +121,7 @@ class DashboardDigitalProductController extends Controller
             }
         };
 
-        // --- Query (Tidak berubah) ---
+        // Queries (Data Fetching)
         $revenueBySubTypeData = DocumentData::query()
             ->select(DB::raw($subTypeCaseStatement.' as sub_type'), DB::raw($productCaseStatement.' as product'), DB::raw('SUM(net_price) as total_revenue'))
             ->whereNotNull(DB::raw($productCaseStatement))->whereNotNull(DB::raw($subTypeCaseStatement))->where('net_price', '>', 0)
@@ -164,7 +167,6 @@ class DashboardDigitalProductController extends Controller
             'filters' => [
                 'startDate' => $startDateToUse,
                 'endDate' => $endDateToUse,
-                // Kirim kembali nilai yang divalidasi (atau null)
                 'products' => $validated['products'] ?? null,
                 'witels' => $validated['witels'] ?? null,
                 'subTypes' => $validated['subTypes'] ?? null,
@@ -172,7 +174,12 @@ class DashboardDigitalProductController extends Controller
                 'limit' => $limit,
             ],
             'filterOptions' => [
-                'products' => $products, 'witelList' => $witelList, 'subTypes' => $subTypes, 'branchList' => $branchList,
+                'products' => $products,
+                'witelList' => $witelList,
+                'subTypes' => $subTypes,
+                'branchList' => $branchList,
+                // [TAMBAHAN PENTING] Kirim mapping ke frontend
+                'witelBranchMap' => $witelBranchMap,
             ],
             'isEmbed' => false,
         ]);
@@ -180,7 +187,7 @@ class DashboardDigitalProductController extends Controller
 
     public function embed(Request $request)
     {
-        // 1. Validasi filter (sudah benar)
+        // 1. Validasi
         $validated = $request->validate([
             'startDate' => 'nullable|date_format:Y-m-d',
             'endDate' => 'nullable|date_format:Y-m-d|after_or_equal:startDate',
@@ -199,13 +206,16 @@ class DashboardDigitalProductController extends Controller
         $startDateToUse = $request->input('startDate', $initialStartDate);
         $endDateToUse = $request->input('endDate', $initialEndDate);
 
-        // Opsi filter (tidak berubah)
+        // Opsi filter
         $products = ['Netmonk', 'OCA', 'Antares Eazy', 'Pijar'];
         $subTypes = ['AO', 'SO', 'DO', 'MO', 'RO'];
         $witelList = DocumentData::query()->select('nama_witel')->whereNotNull('nama_witel')->distinct()->orderBy('nama_witel')->pluck('nama_witel');
         $branchList = DocumentData::query()->select('telda')->whereNotNull('telda')->distinct()->orderBy('telda')->pluck('telda');
 
-        // CASE statements (tidak berubah)
+        // [TAMBAHAN PENTING] Panggil fungsi mapping di method embed juga
+        $witelBranchMap = $this->getWitelBranchMap();
+
+        // CASE statements
         $productCaseStatement = 'CASE '.
             "WHEN UPPER(TRIM(product)) LIKE 'NETMONK%' THEN 'Netmonk' ".
             "WHEN UPPER(TRIM(product)) LIKE 'OCA%' THEN 'OCA' ".
@@ -224,21 +234,18 @@ class DashboardDigitalProductController extends Controller
         }
         $subTypeCaseStatement .= 'ELSE NULL END';
 
-        // [PERBAIKAN UTAMA - ANTI GAGAL]
+        // Filter Logic Closure
         $applyFilters = function ($query) use ($startDateToUse, $endDateToUse, $validated, $subTypeCaseStatement, $productCaseStatement) {
-            // Selalu terapkan filter tanggal
             $query->whereBetween('order_date', [$startDateToUse.' 00:00:00', $endDateToUse.' 23:59:59']);
 
-            // [FIX PRODUK]
             if (isset($validated['products']) && is_array($validated['products'])) {
                 if (empty($validated['products'])) {
-                    $query->whereRaw('1 = 0'); // Paksa 0 hasil
+                    $query->whereRaw('1 = 0');
                 } else {
                     $query->whereIn(DB::raw($productCaseStatement), $validated['products']);
                 }
             }
 
-            // [FIX WITEL]
             if (isset($validated['witels']) && is_array($validated['witels'])) {
                 if (empty($validated['witels'])) {
                     $query->whereRaw('1 = 0');
@@ -247,7 +254,6 @@ class DashboardDigitalProductController extends Controller
                 }
             }
 
-            // [FIX BRANCH]
             if (isset($validated['branches']) && is_array($validated['branches'])) {
                 if (empty($validated['branches'])) {
                     $query->whereRaw('1 = 0');
@@ -256,7 +262,6 @@ class DashboardDigitalProductController extends Controller
                 }
             }
 
-            // [FIX SUB TYPE]
             if (isset($validated['subTypes']) && is_array($validated['subTypes'])) {
                 if (empty($validated['subTypes'])) {
                     $query->whereRaw('1 = 0');
@@ -266,7 +271,7 @@ class DashboardDigitalProductController extends Controller
             }
         };
 
-        // --- Query (Tidak berubah) ---
+        // Queries
         $revenueBySubTypeData = DocumentData::query()
             ->select(DB::raw($subTypeCaseStatement.' as sub_type'), DB::raw($productCaseStatement.' as product'), DB::raw('SUM(net_price) as total_revenue'))
             ->whereNotNull(DB::raw($productCaseStatement))->whereNotNull(DB::raw($subTypeCaseStatement))->where('net_price', '>', 0)
@@ -319,7 +324,12 @@ class DashboardDigitalProductController extends Controller
                 'limit' => $limit,
             ],
             'filterOptions' => [
-                'products' => $products, 'witelList' => $witelList, 'subTypes' => $subTypes, 'branchList' => $branchList,
+                'products' => $products,
+                'witelList' => $witelList,
+                'subTypes' => $subTypes,
+                'branchList' => $branchList,
+                // [TAMBAHAN PENTING] Kirim mapping ke frontend
+                'witelBranchMap' => $witelBranchMap,
             ],
             'isEmbed' => true,
         ])->rootView('embed');

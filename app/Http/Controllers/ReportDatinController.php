@@ -21,20 +21,28 @@ class ReportDatinController extends Controller
      */
     public function index(Request $request)
     {
-        // Panggil fungsi-fungsi dari Trait
-        $reportData = $this->getSosReportData();
+        // [PERBAIKAN UTAMA]
+        // Memisahkan pengambilan data AOMO dan SODORO secara eksplisit.
+        // Ini meniru logika AnalysisSOSController baris 36-37 agar angkanya akurat.
+
+        $reportDataAomo = $this->getSosReportData('AOMO');
+        $reportDataSodoro = $this->getSosReportData('SODORO');
+
+        // Data Galaksi (tetap sama)
         $galaksiData = $this->getGalaksiReportData();
 
+        // Ambil Konfigurasi Tabel (tetap sama)
         $configAomoRecord = UserTableConfiguration::where('page_name', 'analysis_sos_aomo')
-                            ->where('user_id', Auth::id())
-                            ->first();
+                                    ->where('user_id', Auth::id())
+                                    ->first();
         $configSodoroRecord = UserTableConfiguration::where('page_name', 'analysis_sos_sodoro')
-                            ->where('user_id', Auth::id())
-                            ->first();
+                                    ->where('user_id', Auth::id())
+                                    ->first();
 
-        // Render halaman React 'ReportDatin'
         return Inertia::render('ReportDatin', [
-            'reportData' => $reportData,
+            // Kirim dua variabel terpisah ke Frontend
+            'reportDataAomo' => $reportDataAomo,
+            'reportDataSodoro' => $reportDataSodoro,
             'galaksiData' => $galaksiData,
             'savedConfigAomo' => $configAomoRecord ? $configAomoRecord->configuration : null,
             'savedConfigSodoro' => $configSodoroRecord ? $configSodoroRecord->configuration : null,
