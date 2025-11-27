@@ -51,7 +51,8 @@ class AnalysisJTDashboardController extends Controller
     }
 
     // Helper Filter Ketat Terpusat
-    private function applyStrictFilters($query) {
+    private function applyStrictFilters($query)
+    {
         $excludedWitel = ['WITEL SEMARANG JATENG UTARA', 'WITEL SOLO JATENG TIMUR', 'WITEL YOGYA JATENG SELATAN'];
 
         $query->whereNotIn('status_proyek', ['Selesai', 'Dibatalkan', 'GO LIVE'])
@@ -98,7 +99,9 @@ class AnalysisJTDashboardController extends Controller
             $dbWitelClean = strtoupper(trim($row->witel_baru));
             $po = $row->fixed_po_name;
 
-            if (empty($po) || $po == 'Belum Terdefinisi') continue;
+            if (empty($po) || $po == 'Belum Terdefinisi') {
+                continue;
+            }
 
             // Jika Witel DB cocok dengan daftar Witel Induk kita
             if (isset($validParents[$dbWitelClean])) {
@@ -136,6 +139,7 @@ class AnalysisJTDashboardController extends Controller
                 'headerTitle' => 'Dashboard Analysis JT',
             ]);
         }
+
         return $this->handleRequest($request, false);
     }
 
@@ -256,7 +260,7 @@ class AnalysisJTDashboardController extends Controller
                         'po_name' => $item->fixed_po_name,
                         'uraian_kegiatan' => $item->uraian_kegiatan,
                         'usia' => $item->usia,
-                        'rank' => $index + 1 // Ranking manual di PHP
+                        'rank' => $index + 1, // Ranking manual di PHP
                     ];
                 });
             })->values()->all();
@@ -274,7 +278,7 @@ class AnalysisJTDashboardController extends Controller
                         'po_name' => $item->fixed_po_name,
                         'uraian_kegiatan' => $item->uraian_kegiatan,
                         'usia' => $item->usia,
-                        'rank' => $index + 1
+                        'rank' => $index + 1,
                     ];
                 });
             })->values()->all();
@@ -322,7 +326,7 @@ class AnalysisJTDashboardController extends Controller
             ->distinct()
             ->orderBy('fixed_po_name')
             ->pluck('fixed_po_name')
-            ->filter(fn($val) => !empty($val) && $val !== 'Belum Terdefinisi')
+            ->filter(fn ($val) => !empty($val) && $val !== 'Belum Terdefinisi')
             ->values();
 
         $response = Inertia::render('DashboardJT', [
@@ -335,12 +339,15 @@ class AnalysisJTDashboardController extends Controller
                 'poList' => $allPoList,
                 'witelPoMap' => $witelPoMap,
                 'initialStartDate' => $startDateForUI,
-                'initialEndDate' => $endDateForUI
+                'initialEndDate' => $endDateForUI,
             ],
             'isEmbed' => $isEmbed,
         ]);
 
-        if ($isEmbed) return $response->rootView('embed');
+        if ($isEmbed) {
+            return $response->rootView('embed');
+        }
+
         return $response;
     }
 }
