@@ -154,7 +154,11 @@ class DocumentDataImport implements OnEachRow, WithChunkReading, WithEvents, Wit
         }
 
         $layanan = trim($rowAsArray['layanan'] ?? '');
-        if (in_array(strtolower($productValue), ['kidi']) || stripos($layanan, 'mahir') !== false) {
+        if (in_array(strtolower($productValue), ['kidi'])) {
+            return;
+        }
+
+        if (!str_contains($productValue, '-') && stripos($productValue, 'pijar') !== false && stripos($layanan, 'mahir') !== false) {
             return;
         }
 
@@ -259,6 +263,10 @@ class DocumentDataImport implements OnEachRow, WithChunkReading, WithEvents, Wit
             foreach ($individualProducts as $pName) {
                 $pName = trim($pName);
                 if (empty($pName)) {
+                    continue;
+                }
+
+                if (stripos($pName, 'pijar') !== false && stripos($layanan, 'mahir') !== false) {
                     continue;
                 }
 

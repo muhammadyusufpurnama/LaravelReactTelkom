@@ -2,6 +2,7 @@
 
 namespace App\Jobs;
 
+use Carbon\Carbon;
 use Illuminate\Bus\Batchable;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -12,15 +13,17 @@ use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
-use Carbon\Carbon;
-use PhpOffice\PhpSpreadsheet\IOFactory;
-use PhpOffice\PhpSpreadsheet\Shared\Date;
 use OpenSpout\Reader\Common\Creator\ReaderEntityFactory;
 use OpenSpout\Writer\Common\Creator\WriterEntityFactory;
+use PhpOffice\PhpSpreadsheet\Shared\Date;
 
 class ImportAndProcessDocument implements ShouldQueue
 {
-    use Batchable, Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
+    use Batchable;
+    use Dispatchable;
+    use InteractsWithQueue;
+    use Queueable;
+    use SerializesModels;
 
     public $timeout = 1200;
     protected $path;
@@ -32,7 +35,9 @@ class ImportAndProcessDocument implements ShouldQueue
 
     public function handle(): void
     {
-        if ($this->batch() && $this->batch()->cancelled()) return;
+        if ($this->batch() && $this->batch()->cancelled()) {
+            return;
+        }
 
         $batchId = $this->batch() ? $this->batch()->id : uniqid();
         Log::info("Batch [{$batchId}]: Job Import dimulai.");
@@ -48,7 +53,7 @@ class ImportAndProcessDocument implements ShouldQueue
             if (in_array($extension, ['xlsx', 'xls'])) {
                 Log::info("Batch [{$batchId}]: Convert Excel ke CSV (Spout Mode)...");
 
-                $tempCsvFile = tempnam(sys_get_temp_dir(), 'imp_') . '.csv';
+                $tempCsvFile = tempnam(sys_get_temp_dir(), 'imp_').'.csv';
 
                 // Buka Reader (Excel)
                 $reader = ReaderEntityFactory::createReaderFromFile($originalFilePath);
@@ -81,7 +86,9 @@ class ImportAndProcessDocument implements ShouldQueue
 
             // 2. BACA CSV
             $handle = fopen($csvPath, 'r');
-            if (!$handle) throw new \Exception("Gagal membuka file CSV.");
+            if (!$handle) {
+                throw new \Exception('Gagal membuka file CSV.');
+            }
 
             // 3. MAPPING HEADER
             $headerLine = fgets($handle);
@@ -90,12 +97,14 @@ class ImportAndProcessDocument implements ShouldQueue
             $header = str_getcsv($headerLine, ',');
 
             // Normalisasi header: huruf kecil & hilangkan spasi kiri/kanan
-            $header = array_map(fn($h) => strtolower(trim($h)), $header);
+            $header = array_map(fn ($h) => strtolower(trim($h)), $header);
             $idx = array_flip($header);
 
             // Cek Kolom Wajib (Order Id)
             $idxOrderId = $idx['order id'] ?? $idx['order_id'] ?? null;
-            if (is_null($idxOrderId)) throw new \Exception("Kolom 'Order Id' tidak ditemukan di file.");
+            if (is_null($idxOrderId)) {
+                throw new \Exception("Kolom 'Order Id' tidak ditemukan di file.");
+            }
 
             // 4. BERSIHKAN TEMP TABLES
             DB::table('temp_upload_data')->truncate();
@@ -106,12 +115,16 @@ class ImportAndProcessDocument implements ShouldQueue
             $processedRows = 0;
 
             while (($row = fgetcsv($handle, 0, ',')) !== false) {
-                $processedRows++;
+                ++$processedRows;
                 // Skip baris kosong atau header berulang
-                if (empty($row) || count($row) < 1) continue;
+                if (empty($row) || count($row) < 1) {
+                    continue;
+                }
 
                 $rawOrderId = $row[$idxOrderId] ?? null;
-                if (!$rawOrderId || in_array(strtolower($rawOrderId), ['order id', 'order_id'])) continue;
+                if (!$rawOrderId || in_array(strtolower($rawOrderId), ['order id', 'order_id'])) {
+                    continue;
+                }
 
                 // Logic SC ID (Sesuai file import lama)
                 $orderId = (strtoupper(substr($rawOrderId, 0, 2)) === 'SC') ? substr($rawOrderId, 2) : $rawOrderId;
@@ -130,15 +143,20 @@ class ImportAndProcessDocument implements ShouldQueue
                 $layanan = trim($row[$idx['layanan'] ?? -1] ?? '');
 
                 // FILTER: Kidi, Mahir, Jateng (Sesuai file import lama)
-                if (str_contains(strtolower($productNameFull), 'kidi') || stripos($layanan, 'mahir') !== false) continue;
-                if (stripos($witel, 'JATENG') !== false) continue;
+                if (str_contains(strtolower($productNameFull), 'kidi')) {
+                    continue;
+                }
+
+                if (stripos($witel, 'JATENG') !== false) {
+                    continue;
+                }
 
                 // 3. Pembersihan Nama Produk
                 $productValue = $productNameFull;
                 if (!empty($productNameFull)) {
-                     $productValue = str_ends_with($productNameFull, (string) $orderId)
-                        ? trim(substr($productNameFull, 0, -strlen((string) $orderId)))
-                        : trim(str_replace((string) $orderId, '', $productNameFull));
+                    $productValue = str_ends_with($productNameFull, (string) $orderId)
+                       ? trim(substr($productNameFull, 0, -strlen((string) $orderId)))
+                       : trim(str_replace((string) $orderId, '', $productNameFull));
                 }
 
                 // 4. Segment (Mapping 'segmen_n' -> 'segment')
@@ -207,7 +225,13 @@ class ImportAndProcessDocument implements ShouldQueue
                     $individualProducts = explode('-', $productValue);
                     foreach ($individualProducts as $pName) {
                         $pName = trim($pName);
-                        if (empty($pName)) continue;
+                        if (empty($pName)) {
+                            continue;
+                        }
+
+                        if (stripos($pName, 'pijar') !== false && stripos($layanan, 'mahir') !== false) {
+                            continue;
+                        }
 
                         $batchProducts[] = [
                             'batch_id' => $batchId,
@@ -217,9 +241,25 @@ class ImportAndProcessDocument implements ShouldQueue
                             'status_wfm' => $statusWfm,
                             'channel' => $channel,
                             'created_at' => now(),
-                            'updated_at' => now()
+                            'updated_at' => now(),
                         ];
                     }
+                } else {
+                    if (stripos($productValue, 'pijar') !== false && stripos($layanan, 'mahir') !== false) {
+                        // Skip entry ke batchData jika ini single product pijar mahir
+                        continue;
+                    }
+
+                    $batchProducts[] = [
+                        'batch_id' => $batchId,
+                        'order_id' => $orderId,
+                        'product_name' => $productValue,
+                        'net_price' => $netPrice,
+                        'status_wfm' => $statusWfm,
+                        'channel' => $channel,
+                        'created_at' => now(),
+                        'updated_at' => now(),
+                    ];
                 }
 
                 // INSERT BATCH (500 Baris)
@@ -236,8 +276,12 @@ class ImportAndProcessDocument implements ShouldQueue
             }
 
             // INSERT SISA DATA
-            if (!empty($batchData)) DB::table('temp_upload_data')->insert($batchData);
-            if (!empty($batchProducts)) DB::table('temp_order_products')->insert($batchProducts);
+            if (!empty($batchData)) {
+                DB::table('temp_upload_data')->insert($batchData);
+            }
+            if (!empty($batchProducts)) {
+                DB::table('temp_order_products')->insert($batchProducts);
+            }
 
             fclose($handle);
             Cache::put('import_progress_'.$batchId, 90, now()->addHour());
@@ -247,13 +291,16 @@ class ImportAndProcessDocument implements ShouldQueue
 
             Cache::put('import_progress_'.$batchId, 100, now()->addHour());
             Log::info("Batch [{$batchId}]: Import Selesai. Total: {$processedRows}");
-
         } catch (\Throwable $e) {
             $this->fail($e);
-            if (isset($handle) && is_resource($handle)) fclose($handle);
+            if (isset($handle) && is_resource($handle)) {
+                fclose($handle);
+            }
             throw $e;
         } finally {
-            if ($isConverted && file_exists($csvPath)) @unlink($csvPath);
+            if ($isConverted && file_exists($csvPath)) {
+                @unlink($csvPath);
+            }
         }
     }
 
@@ -270,7 +317,7 @@ class ImportAndProcessDocument implements ShouldQueue
 
             // 2. Insert/Update Tabel Utama (Document Data)
             // WAJIB dijalankan DULUAN sebelum tabel anak (Order Products)
-            DB::statement("
+            DB::statement('
                 INSERT INTO document_data (
                     batch_id, order_id, product, net_price, milestone, segment, nama_witel, status_wfm,
                     customer_name, channel, layanan, filter_produk, witel_lama, order_status,
@@ -293,11 +340,11 @@ class ImportAndProcessDocument implements ShouldQueue
                     segment = VALUES(segment),
                     channel = VALUES(channel),
                     updated_at = NOW()
-            ", [$batchId]);
+            ', [$batchId]);
 
             // 3. Insert/Update Tabel Anak (Order Products)
             // Mengambil dari tabel transit temp_order_products
-            DB::statement("
+            DB::statement('
                 INSERT INTO order_products (
                     order_id, product_name, net_price, channel, status_wfm, created_at, updated_at
                 )
@@ -309,7 +356,7 @@ class ImportAndProcessDocument implements ShouldQueue
                     net_price = VALUES(net_price),
                     status_wfm = VALUES(status_wfm),
                     updated_at = NOW()
-            ", [$batchId]);
+            ', [$batchId]);
         });
     }
 
@@ -319,28 +366,42 @@ class ImportAndProcessDocument implements ShouldQueue
         $witel = strtoupper(trim($witel));
         $segment = strtoupper(trim($segment));
 
-        if ($productName == 'netmonk') return ($segment === 'LEGS') ? 26100 : (($witel === 'BALI') ? 26100 : 21600);
-        if ($productName == 'oca') return ($segment === 'LEGS') ? 104000 : (($witel === 'NUSA TENGGARA') ? 104000 : 103950);
-        if ($productName == 'antares eazy') return 35000;
-        if ($productName == 'pijar sekolah') return 582750;
+        if ($productName == 'netmonk') {
+            return ($segment === 'LEGS') ? 26100 : (($witel === 'BALI') ? 26100 : 21600);
+        }
+        if ($productName == 'oca') {
+            return ($segment === 'LEGS') ? 104000 : (($witel === 'NUSA TENGGARA') ? 104000 : 103950);
+        }
+        if ($productName == 'antares eazy') {
+            return 35000;
+        }
+        if ($productName == 'pijar sekolah') {
+            return 582750;
+        }
+
         return 0;
     }
 
     private function parseDateFast($date)
     {
-        if (empty($date) || $date == '-' || $date == '#N/A') return null;
+        if (empty($date) || $date == '-' || $date == '#N/A') {
+            return null;
+        }
         try {
             if (is_numeric($date)) {
                 return Date::excelToDateTimeObject($date)->format('Y-m-d H:i:s');
             }
+
             return Carbon::parse($date)->format('Y-m-d H:i:s');
-        } catch (\Exception $e) { return null; }
+        } catch (\Exception $e) {
+            return null;
+        }
     }
 
     public function failed(\Throwable $exception): void
     {
         $batchId = $this->batch() ? $this->batch()->id : 'N/A';
-        Log::error("Batch [{$batchId}]: GAGAL - " . $exception->getMessage());
+        Log::error("Batch [{$batchId}]: GAGAL - ".$exception->getMessage());
         Cache::put('import_progress_'.$batchId, -1, now()->addHour());
     }
 }
